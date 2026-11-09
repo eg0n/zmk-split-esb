@@ -76,9 +76,16 @@ scripts/flash.sh                     # flashes what was just built, one part at 
 ```
 
 Per-part Kconfig lives in `conf/<keyboard>_<part>.conf`. The Totem needs
-`zmk-totem-dongle`, `zmk-rgbled-widget` and `prospector-zmk-module` (with the
-ESB status observer) checked out in `ZMK_MODULES_DIR`; its dongle uses the
-`PROSPECTOR_LAYOUT` screen (default `crystal`).
+these checked out in `ZMK_MODULES_DIR`, and builds whatever branch each is on:
+
+- `zmk-totem-dongle`
+- `zmk-rgbled-widget`, branch `feat/esb-split` of
+  [eg0n/zmk-rgbled-widget](https://github.com/eg0n/zmk-rgbled-widget) for the
+  link-status blink on ESB peripherals
+- `prospector-zmk-module`, branch `feat/esb-split` of
+  [eg0n/prospector-zmk-module](https://github.com/eg0n/prospector-zmk-module)
+  for the connection indicators; the dongle uses the `PROSPECTOR_LAYOUT`
+  screen (default `crystal`)
 
 Extra CMake arguments build into a separate directory and image, so test
 options don't leak into normal builds:
