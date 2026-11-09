@@ -1,0 +1,15 @@
+/*
+ * Copyright (c) 2026 The ZMK Contributors
+ * SPDX-License-Identifier: MIT
+ */
+
+/* The dongle has no battery: report the lowest half's level to hosts. */
+/ {
+    chosen {
+        zmk,battery = &peripheral_battery;
+    };
+
+    peripheral_battery: peripheral_battery {
+        compatible = "zmk,split-peripheral-battery";
+    };
+};

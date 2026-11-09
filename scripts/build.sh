@@ -82,6 +82,10 @@ for part in "${parts[@]}"; do
     name="${keyboard}_$part$suffix"
     echo "== $name"
     part_settings "$part"
+    overlay="$here/conf/${keyboard}_$part.overlay"
+    if [[ -f "$overlay" ]]; then
+        extra+=("-DEXTRA_DTC_OVERLAY_FILE=/workspaces/zmk-split-esb/conf/${keyboard}_$part.overlay")
+    fi
 
     # Zephyr misses edits to this module's Kconfig in an existing build dir,
     # and -D options stick in its cache, so start fresh when either changes.

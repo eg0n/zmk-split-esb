@@ -193,6 +193,13 @@ config ZMK_SPLIT_ESB_SELFTEST_ASSERT
       Test aid for the assert record: if no assert has been recorded yet, raise
       one and reboot, so the debug screen should then show it.
 
+config ZMK_SPLIT_ESB_PERIPHERAL_BATTERY
+    bool "Battery sensor reporting the lowest peripheral's level"
+    default y
+    depends on DT_HAS_ZMK_SPLIT_PERIPHERAL_BATTERY_ENABLED
+    depends on ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING
+    select SENSOR
+
 config ZMK_SPLIT_ESB_DEBUG_SCREEN
     bool "ESB debug status screen for nice!view"
     depends on ZMK_DISPLAY && ZMK_DISPLAY_STATUS_SCREEN_CUSTOM

@@ -1,0 +1,9 @@
+# Copyright (c) 2026 The ZMK Contributors
+# SPDX-License-Identifier: MIT
+
+description: |
+  Battery "sensor" for a split central without a battery of its own, such as
+  a dongle. Reports the lowest state of charge among its peripherals, so
+  pointing zmk,battery at it makes hosts see the lowest half's level.
+
+compatible: "zmk,split-peripheral-battery"

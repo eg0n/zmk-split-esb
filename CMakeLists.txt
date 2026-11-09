@@ -41,4 +41,5 @@ if(CONFIG_ZMK_SPLIT_ESB)
   endif()
 
   zephyr_library_sources_ifdef(CONFIG_ZMK_SPLIT_ESB_DEBUG_SCREEN src/debug/esb_debug_screen.c)
+  zephyr_library_sources_ifdef(CONFIG_ZMK_SPLIT_ESB_PERIPHERAL_BATTERY src/drivers/peripheral_battery.c)
 endif()

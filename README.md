@@ -28,6 +28,14 @@ none lost) and phase 0 are verified on a Corne.
 | 3 | Idle duty-cycling, channel hopping, ACK-payload commands |
 | 4 | Dongle (Totem + Prospector): builds, untested |
 
+## Battery level reported to hosts
+
+ZMK's Bluetooth battery service reports the central's own battery. A dongle
+has none, so the Totem points `zmk,battery` at a `zmk,split-peripheral-battery`
+node (`conf/totem_dongle.overlay`), which reports the lowest level any
+peripheral has sent. Hosts then see the lowest half, refreshed every
+`CONFIG_ZMK_BATTERY_REPORT_INTERVAL` seconds.
+
 ## Wire format
 
 Packets use the standard ESB on-air format (2 Mbit/s, dynamic payload length,
