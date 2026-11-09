@@ -5,9 +5,9 @@
 
 #pragma once
 
-/* Peripheral to central: [seq][cmd_ack][type][data]...; no events means
- * keepalive. seq is kept when a packet is resent, and cmd_ack echoes the last
- * command's seq so the central can stage the next one.
+/* Peripheral to central: [seq][cmd_ack][session][type][data]...; no events
+ * means keepalive. seq is kept when a packet is resent, cmd_ack echoes the
+ * last command's seq, and session is random per boot (a change = restart).
  * Central to peripheral, as an ACK payload: [seq][type][data]. */
 
 #include <errno.h>
@@ -17,7 +17,7 @@
 
 #include <zmk/split/transport/types.h>
 
-#define ESB_FRAME_PERIPHERAL_HEADER 2
+#define ESB_FRAME_PERIPHERAL_HEADER 3
 #define ESB_FRAME_COMMAND_HEADER 1
 
 static inline ssize_t esb_frame_event_data_size(enum zmk_split_transport_peripheral_event_type type) {

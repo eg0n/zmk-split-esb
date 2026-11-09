@@ -56,6 +56,7 @@ static struct peripheral {
     uint8_t last_seq;
     uint8_t cmd_seq;
     uint8_t staged_seq; /* 0: nothing staged */
+    uint8_t session;    /* 0: never heard */
     ATOMIC_DEFINE(pressed, MAX_POSITIONS);
 } peripherals[PERIPHERAL_COUNT];
 
@@ -131,6 +132,8 @@ static void deliver(uint8_t source, struct zmk_split_transport_peripheral_event 
     }
 }
 
+static void release_keys(uint8_t source);
+
 static void process(const struct rx_item *item) {
     uint8_t source = item->pipe - 1;
     struct peripheral *p = &peripherals[source];
@@ -144,6 +147,18 @@ static void process(const struct rx_item *item) {
 
     if (item->len < ESB_FRAME_PERIPHERAL_HEADER) {
         return;
+    }
+
+    /* Restarted, perhaps too quickly for the link to time out: nothing it
+     * had pressed is still pressed, and its seq has started over. */
+    uint8_t session = item->data[2];
+    if (session != p->session) {
+        if (p->session) {
+            LOG_INF("Peripheral %d restarted", source);
+            release_keys(source);
+        }
+        p->session = session;
+        p->seq_valid = false;
     }
 
     if (p->staged_seq && item->data[1] == p->staged_seq) {

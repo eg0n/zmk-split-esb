@@ -13,6 +13,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/init.h>
 #include <zephyr/logging/log.h>
+#include <hal/nrf_rng.h>
 
 #include <zmk/split/transport/peripheral.h>
 #include <zmk/split/transport/types.h>
@@ -48,6 +49,7 @@ static uint8_t resend_delay_ms;
 /* Set from the radio ISR, consumed by done_work. */
 static atomic_t result_acked;
 
+static uint8_t session;
 static uint8_t last_cmd_seq;
 static atomic_t keepalive_pending;
 static int64_t last_ack_ms;
@@ -126,6 +128,7 @@ static void send_work_cb(struct k_work *work) {
 
     pkt[0] = ++seq;
     pkt[1] = last_cmd_seq;
+    pkt[2] = session;
     pkt_len = len;
     in_flight = true;
     resend_delay_ms = RESEND_DELAY_MIN_MS;
@@ -244,7 +247,25 @@ static const struct zmk_split_transport_peripheral_api api = {
     .set_status_callback = set_status_callback,
 };
 
+/* One byte from the hardware RNG; BLE is off, so nothing else is using it. */
+static uint8_t random_session(void) {
+    uint8_t value;
+
+    nrf_rng_event_clear(NRF_RNG, NRF_RNG_EVENT_VALRDY);
+    nrf_rng_task_trigger(NRF_RNG, NRF_RNG_TASK_START);
+    do {
+        while (!nrf_rng_event_check(NRF_RNG, NRF_RNG_EVENT_VALRDY)) {
+        }
+        nrf_rng_event_clear(NRF_RNG, NRF_RNG_EVENT_VALRDY);
+        value = nrf_rng_random_value_get(NRF_RNG);
+    } while (value == 0);
+    nrf_rng_task_trigger(NRF_RNG, NRF_RNG_TASK_STOP);
+
+    return value;
+}
+
 static int esb_peripheral_init(void) {
+    session = random_session();
     zmk_split_esb_ptx_set_done_cb(ptx_done);
     return 0;
 }
