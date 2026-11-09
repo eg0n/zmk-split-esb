@@ -1,0 +1,4 @@
+name: zmk-split-esb
+build:
+  cmake: .
+  kconfig: Kconfig

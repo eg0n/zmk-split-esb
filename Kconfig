@@ -1,0 +1,65 @@
+# Copyright (c) 2026 The ZMK Contributors
+# SPDX-License-Identifier: MIT
+
+menuconfig ZMK_SPLIT_ESB
+    bool "ESB split transport"
+    depends on ZMK_SPLIT
+    help
+      Enhanced ShockBurst link between split halves. On a central that also
+      runs BLE, the ESB receiver is hosted inside Zephyr's open-source BLE
+      controller so BLE to hosts keeps working.
+
+if ZMK_SPLIT_ESB
+
+config ZMK_SPLIT_ESB_HOSTED_PRX
+    bool "Host the ESB receiver inside the Zephyr BLE controller"
+    default y if ZMK_SPLIT_ROLE_CENTRAL && BT_LL_SW_SPLIT
+    depends on BT_LL_SW_SPLIT
+    select BT_CTLR_USER_EXT
+    select BT_CTLR_ASSERT_HANDLER
+    select ZMK_SPLIT_ESB_ASSERT_RECORD
+
+config ZMK_SPLIT_ESB_ASSERT_RECORD
+    bool "Keep the last controller assert across a reboot"
+    select REBOOT
+    help
+      Controller asserts are written to RAM that survives a warm reset, then
+      the keyboard reboots. The debug screen shows the recorded file and line.
+
+config ZMK_SPLIT_ESB_SELFTEST_ASSERT
+    bool "Fire one fake controller assert 30 s after boot"
+    depends on ZMK_SPLIT_ESB_ASSERT_RECORD
+    help
+      Test aid for the assert record: if no assert has been recorded yet, raise
+      one and reboot, so the debug screen should then show it.
+
+config ZMK_SPLIT_ESB_DEBUG_SCREEN
+    bool "ESB debug status screen for nice!view"
+    depends on ZMK_DISPLAY && ZMK_DISPLAY_STATUS_SCREEN_CUSTOM
+    select LV_USE_CANVAS
+    select LV_FONT_UNSCII_8
+    select HWINFO
+    help
+      Replaces the status screen with link counters. Build with
+      CONFIG_NICE_VIEW_WIDGET_STATUS=n so the stock nice!view screen is
+      left out.
+
+config ZMK_SPLIT_ESB_DEBUG_SCREEN_REFRESH_MS
+    int "Debug screen refresh period (ms)"
+    depends on ZMK_SPLIT_ESB_DEBUG_SCREEN
+    default 500
+
+module = ZMK_SPLIT_ESB
+module-str = ZMK_SPLIT_ESB
+source "subsys/logging/Kconfig.template.log_config"
+
+endif # ZMK_SPLIT_ESB
+
+# The controller's own defaults are 0 ticker ids and 5 event types. The hosted
+# receiver needs one ticker id and no proprietary HCI events, but a range of 0
+# doesn't compile (the LISTIFY in ll_sw/lll.h leaves a stray comma), so keep 1.
+config BT_CTLR_USER_TICKER_ID_RANGE
+    default 1 if ZMK_SPLIT_ESB_HOSTED_PRX
+
+config BT_CTLR_USER_EVT_RANGE
+    default 1 if ZMK_SPLIT_ESB_HOSTED_PRX
