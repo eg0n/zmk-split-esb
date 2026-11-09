@@ -18,6 +18,7 @@
 #include <zmk/split/transport/central.h>
 #include <zmk/split/transport/types.h>
 
+#include <zmk_split_esb/events/peripheral_link_changed.h>
 #include <zmk_split_esb/prx.h>
 #include <zmk_split_esb/stats.h>
 
@@ -74,6 +75,11 @@ static struct zmk_split_transport_status get_status(void);
 static const struct zmk_split_transport_central_api api;
 
 ZMK_SPLIT_TRANSPORT_CENTRAL_REGISTER(esb_central, &api, CONFIG_ZMK_SPLIT_ESB_PRIORITY);
+
+static void raise_link_changed(uint8_t source, bool connected) {
+    raise_zmk_split_esb_peripheral_link_changed(
+        (struct zmk_split_esb_peripheral_link_changed){.source = source, .connected = connected});
+}
 
 static void notify_status(void) {
     int up = 0;
@@ -142,6 +148,7 @@ static void process(const struct rx_item *item) {
     if (!p->connected) {
         p->connected = true;
         LOG_INF("Peripheral %d connected", source);
+        raise_link_changed(source, true);
         notify_status();
     }
 
@@ -221,6 +228,7 @@ static void link_check_work_cb(struct k_work *work) {
             p->connected = false;
             LOG_INF("Peripheral %d lost", i);
             release_keys(i);
+            raise_link_changed(i, false);
             notify_status();
         }
     }

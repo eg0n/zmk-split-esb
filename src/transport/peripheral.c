@@ -15,6 +15,7 @@
 #include <zephyr/logging/log.h>
 #include <hal/nrf_rng.h>
 
+#include <zmk/events/split_peripheral_status_changed.h>
 #include <zmk/split/transport/peripheral.h>
 #include <zmk/split/transport/types.h>
 
@@ -102,6 +103,10 @@ static void set_connected(bool now_connected) {
     connected = now_connected;
     atomic_set(&zmk_split_esb_stats.link_up, connected);
     LOG_INF("ESB link %s", connected ? "up" : "down");
+
+    /* The event BLE split raises, which peripheral status widgets follow. */
+    raise_zmk_split_peripheral_status_changed(
+        (struct zmk_split_peripheral_status_changed){.connected = connected});
 
     if (transport_status_cb) {
         transport_status_cb(&esb_peripheral, get_status());
@@ -228,6 +233,12 @@ static void keepalive_work_cb(struct k_work *work) {
     k_work_submit(&send_work);
     k_work_reschedule(&keepalive_work, K_MSEC(CONFIG_ZMK_SPLIT_ESB_KEEPALIVE_MS));
 }
+
+#if !IS_ENABLED(CONFIG_ZMK_SPLIT_BLE)
+/* BLE split's connection query, which widgets such as nice_view_gem call on
+ * peripherals. Without BLE split nothing else defines it. */
+bool zmk_split_bt_peripheral_is_connected(void) { return connected; }
+#endif
 
 static int report_event(const struct zmk_split_transport_peripheral_event *event) {
     int err = k_msgq_put(&event_q, event, K_NO_WAIT);

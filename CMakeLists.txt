@@ -14,7 +14,10 @@ if(CONFIG_ZMK_SPLIT_ESB)
   zephyr_library_sources_ifdef(CONFIG_ZMK_SPLIT_ESB_PTX src/standalone/ptx.c)
 
   if(CONFIG_ZMK_SPLIT_ESB_TRANSPORT)
-    zephyr_library_sources_ifdef(CONFIG_ZMK_SPLIT_ESB_HOSTED_PRX src/transport/central.c)
+    zephyr_library_sources_ifdef(CONFIG_ZMK_SPLIT_ESB_HOSTED_PRX
+      src/transport/central.c
+      src/events/peripheral_link_changed.c
+    )
     zephyr_library_sources_ifdef(CONFIG_ZMK_SPLIT_ESB_PTX src/transport/peripheral.c)
   endif()
 

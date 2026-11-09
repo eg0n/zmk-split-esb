@@ -1,27 +1,41 @@
 #!/usr/bin/env bash
-# Copy Corne images onto nice!nano UF2 bootloader volumes (macOS).
-#   scripts/flash.sh [left|right|all|<file.uf2>]
-# With no argument, flashes what scripts/build.sh built last, one half at a
-# time. Both halves share a Board-ID, so the check only catches the wrong board.
+# Copy images onto UF2 bootloader volumes (macOS), one part at a time.
+#   scripts/flash.sh [[corne|totem] <part|all> | <file.uf2>]
+# With no argument, flashes what scripts/build.sh built last. Parts of one
+# keyboard share a Board-ID, so the check only catches the wrong board type.
 set -euo pipefail
 
 here=$(cd "$(dirname "$0")/.." && pwd)
-board_pattern=${FLASH_BOARD_PATTERN:-nice}
 
 images=()
-target=${1:-}
-if [[ -z "$target" ]]; then
-    [[ -f "$here/build/last" ]] || { echo "nothing built yet; run scripts/build.sh" >&2; exit 2; }
-    while read -r side; do images+=("$here/build/corne_$side.uf2"); done < "$here/build/last"
-elif [[ "$target" == *.uf2 ]]; then
-    images=("$target")
-else
-    case "$target" in
-        left|right) images=("$here/build/corne_$target.uf2") ;;
-        all) images=("$here/build/corne_left.uf2" "$here/build/corne_right.uf2") ;;
-        *) echo "usage: $0 [left|right|all|<file.uf2>]" >&2; exit 2 ;;
-    esac
-fi
+case "${1:-}" in
+    "")
+        [[ -f "$here/build/last" ]] || { echo "nothing built yet; run scripts/build.sh" >&2; exit 2; }
+        while read -r name; do images+=("$here/build/$name.uf2"); done < "$here/build/last"
+        ;;
+    *.uf2)
+        images=("$1")
+        ;;
+    *)
+        keyboard=corne
+        case "$1" in
+            corne | totem) keyboard=$1; shift ;;
+        esac
+        case "$keyboard" in
+            corne) all=(left right) ;;
+            totem) all=(left right dongle) ;;
+        esac
+        part=${1:-all}
+        if [[ "$part" == all ]]; then
+            for p in "${all[@]}"; do images+=("$here/build/${keyboard}_$p.uf2"); done
+        elif [[ " ${all[*]} " =~ " $part " ]]; then
+            images=("$here/build/${keyboard}_$part.uf2")
+        else
+            echo "usage: $0 [[corne|totem] <part|all> | <file.uf2>]" >&2
+            exit 2
+        fi
+        ;;
+esac
 
 find_volume() {
     for v in /Volumes/*; do
@@ -34,16 +48,22 @@ for image in "${images[@]}"; do
     [[ -f "$image" ]] || { echo "missing $image" >&2; exit 1; }
     name=$(basename "$image" .uf2)
 
+    case "$name" in
+        corne_*) board_pattern=${FLASH_BOARD_PATTERN:-nice} ;;
+        totem_*) board_pattern=${FLASH_BOARD_PATTERN:-xiao} ;;
+        *) board_pattern=${FLASH_BOARD_PATTERN:-.} ;;
+    esac
+
     if vol=$(find_volume); then
         echo "A bootloader drive is already mounted at $vol; eject it or flash it first." >&2
         exit 1
     fi
 
-    echo "Double-tap reset on ${name#corne_} ($name)..."
+    echo "Double-tap reset on $name..."
     until vol=$(find_volume); do sleep 0.5; done
 
     if ! grep -qi "$board_pattern" "$vol/INFO_UF2.TXT"; then
-        echo "$vol doesn't look like a nice!nano:" >&2
+        echo "$vol doesn't look like the board for $name:" >&2
         cat "$vol/INFO_UF2.TXT" >&2
         exit 1
     fi

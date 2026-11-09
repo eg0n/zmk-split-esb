@@ -44,7 +44,7 @@ config ZMK_SPLIT_ESB_PRX_LOW_POWER_IDLE
 
 config ZMK_SPLIT_ESB_PRX_LOW_POWER_WINDOW_MS
     int "Low-power listening window (ms)"
-    depends on ZMK_SPLIT_ESB_PRX_LOW_POWER_IDLE
+    depends on ZMK_SPLIT_ESB_HOSTED_PRX
     default 3
 
 config ZMK_SPLIT_ESB_PTX
@@ -143,6 +143,14 @@ config ZMK_SPLIT_ESB_TX_POWER_DBM
     int "TX power (dBm): 8, 4, 0, -4 or -8"
     default 4
 
+config ZMK_SPLIT_ESB_NETWORK
+    string "Network name, the same on every part of one keyboard"
+    default ""
+    help
+      Derives the address the keyboard's peripherals use, so keyboards
+      with different names don't hear each other. Leave empty to use
+      ZMK_SPLIT_ESB_BASE_ADDR1 as is.
+
 config ZMK_SPLIT_ESB_BASE_ADDR0
     hex "ESB base address 0 (pipe 0)"
     default 0xE7E7E7E7
@@ -151,8 +159,9 @@ config ZMK_SPLIT_ESB_BASE_ADDR1
     hex "ESB base address 1 (pipes 1-7)"
     default 0xC2C2C2C2
     help
-      Change this, or the prefixes, per keyboard so two keyboards nearby
-      don't hear each other.
+      Used when ZMK_SPLIT_ESB_NETWORK is empty. Two keyboards nearby need
+      different addresses, so set a network name (or change this) on all
+      but one.
 
 config ZMK_SPLIT_ESB_ADDR_PREFIX0
     hex "Address prefixes for pipes 3..0 (low byte is pipe 0)"

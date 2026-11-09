@@ -26,7 +26,7 @@ none lost) and phase 0 are verified on a Corne.
 | 1 | Hosted receiver listening alongside full BLE (split + host) |
 | 2 | Full ESB split on a Corne |
 | 3 | Idle duty-cycling, channel hopping, ACK-payload commands |
-| 4 | Dongle (Totem + Prospector) |
+| 4 | Dongle (Totem + Prospector): builds, untested |
 
 ## Known issues
 
@@ -62,26 +62,44 @@ When the controller hits an `LL_ASSERT`, the file and line are kept in RAM that
 survives a warm reset, and the board reboots. `CONFIG_ZMK_SPLIT_ESB_SELFTEST_ASSERT=y`
 raises one fake assert 30 s after boot so the path can be checked.
 
-## Building and flashing (Corne, local)
+## Building and flashing (local)
 
 The scripts build in the `zmkfirmware/zmk-build-arm` container and reuse the
 Zephyr checkout from the ZMK devcontainer's Docker volumes. Override the paths
-with `ZMK_DIR` (default `~/src/zmk`) and `ZMK_CONFIG_DIR` (default
-`~/src/miryoku_zmk`).
+with `ZMK_DIR` (default `~/src/zmk`), `ZMK_CONFIG_DIR` (default
+`~/src/miryoku_zmk`) and `ZMK_MODULES_DIR` (default `~/src/zmk-modules`).
 
 ```sh
-scripts/build.sh left          # or right, or all; extra args go to CMake
-scripts/flash.sh               # flashes what was just built, one half at a time
+scripts/build.sh left                # corne is the default keyboard
+scripts/build.sh totem all           # totem: left, right, dongle
+scripts/flash.sh                     # flashes what was just built, one part at a time
 ```
 
-Per-half Kconfig lives in `conf/corne_<side>.conf`. Extra CMake arguments
-build into a separate directory and image, so test options don't leak into
-normal builds:
+Per-part Kconfig lives in `conf/<keyboard>_<part>.conf`. The Totem needs
+`zmk-totem-dongle`, `zmk-rgbled-widget` and `prospector-zmk-module` (with the
+ESB status observer) checked out in `ZMK_MODULES_DIR`; its dongle uses the
+`PROSPECTOR_LAYOUT` screen (default `crystal`).
+
+Extra CMake arguments build into a separate directory and image, so test
+options don't leak into normal builds:
 
 ```sh
 scripts/build.sh left -DCONFIG_ZMK_SPLIT_ESB_SELFTEST_ASSERT=y
 scripts/flash.sh build/corne_left-custom.uf2
 ```
+
+## Several keyboards
+
+Give every part of a keyboard the same `CONFIG_ZMK_SPLIT_ESB_NETWORK` name
+(the Totem uses `totem`). The peripherals' ESB address is derived from it, so
+keyboards with different names ignore each other. Peripherals need distinct
+`CONFIG_ZMK_SPLIT_ESB_PERIPHERAL_ID`s (1 to 7); id n is ZMK source n - 1.
+
+On peripherals the module raises `zmk_split_peripheral_status_changed` and
+provides `zmk_split_bt_peripheral_is_connected()`, so status widgets written
+for BLE split keep working. On the central it raises
+`zmk_split_esb_peripheral_link_changed` per peripheral, for widgets that track
+BLE connections themselves (the Prospector does).
 
 ## License
 
