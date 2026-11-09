@@ -28,6 +28,12 @@ none lost) and phase 0 are verified on a Corne.
 | 3 | Idle duty-cycling, channel hopping, ACK-payload commands |
 | 4 | Dongle (Totem + Prospector) |
 
+## Known issues
+
+- After a UF2 flash, the peripheral needs one extra reset before it works.
+  Resetting RADIO, TIMER2 and RNG at boot didn't help (tried in 6b5276f,
+  reverted). A normal reset or power-up is fine.
+
 ## Debug screen
 
 With `CONFIG_ZMK_SPLIT_ESB_DEBUG_SCREEN=y` (and `CONFIG_NICE_VIEW_WIDGET_STATUS=n`),
