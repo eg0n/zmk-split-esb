@@ -41,7 +41,7 @@ the nice!view shows, top to bottom:
 
 | Central | Peripheral | Meaning |
 |---|---|---|
-| `PRX ON/OFF` | `PTX` | role, and whether the hosted receiver is scheduled |
+| `PRX ON/LOW/OFF` | `PTX` | role; receiver listening continuously, in low-power windows (ZMK idle), or not scheduled |
 | `WIN` | `TX` | receive windows started / packets sent |
 | `PRE` | `ACK` | windows preempted by BLE / packets acknowledged |
 | `RX` | `RTX` | packets received / retransmissions |

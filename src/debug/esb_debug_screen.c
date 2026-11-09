@@ -107,7 +107,8 @@ static void fill_lines(void) {
     memset(lines, 0, sizeof(lines));
 
 #if IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
-    snprintf(lines[n++], LINE_LEN + 1, "PRX %s", get(&s->prx_active) ? "ON" : "OFF");
+    snprintf(lines[n++], LINE_LEN + 1, "PRX %s",
+             !get(&s->prx_active) ? "OFF" : get(&s->prx_low_power) ? "LOW" : "ON");
     fmt_count(lines[n++], "WIN", get(&s->prx_windows));
     fmt_count(lines[n++], "PRE", get(&s->prx_preempts));
     fmt_count(lines[n++], "RX", get(&s->rx_ok));

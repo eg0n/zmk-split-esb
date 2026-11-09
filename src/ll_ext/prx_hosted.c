@@ -4,9 +4,9 @@
  */
 
 /* ESB receiver hosted in the Zephyr BLE controller via CONFIG_BT_CTLR_USER_EXT.
- * Like the continuous scanner: an unreserved periodic ticker feeds prepares,
- * the receiver listens as long as it can, yields to BLE events and resumes
- * after. ACKs go out through RADIO SHORTS, so no timer or PPI is taken. */
+ * An unreserved periodic ticker feeds prepares. Continuous mode listens, yields
+ * to BLE events and resumes; low-power mode opens short windows that a one-shot
+ * ticker closes. ACKs go out through RADIO SHORTS, taking no timer or PPI. */
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -47,11 +47,24 @@ struct net_buf;
 
 #include "../phy/esb_phy.h"
 
-#define PRX_TICKER_INTERVAL_US (CONFIG_ZMK_SPLIT_ESB_PRX_TICKER_INTERVAL_MS * 1000U)
+#define PRX_TICKER_ID TICKER_ID_USER_BASE
+#define PRX_TICKER_ID_STOP (TICKER_ID_USER_BASE + 1)
+BUILD_ASSERT(CONFIG_BT_CTLR_USER_TICKER_ID_RANGE >= 2, "The receiver needs two ticker ids");
+
+#define PRX_PERIOD_US (CONFIG_ZMK_SPLIT_ESB_PRX_PERIOD_MS * 1000U)
+#define PRX_WINDOW_US (CONFIG_ZMK_SPLIT_ESB_PRX_LOW_POWER_WINDOW_MS * 1000U)
 
 struct lll_prx {
     struct lll_hdr hdr;
+    bool windowed; /* this event is a low-power window */
 };
+
+static atomic_t low_power;
+
+void zmk_split_esb_prx_set_low_power(bool enabled) {
+    atomic_set(&low_power, enabled);
+    atomic_set(&zmk_split_esb_stats.prx_low_power, enabled);
+}
 
 static struct {
     struct ull_hdr ull;
@@ -111,6 +124,9 @@ static int is_abort_cb(void *next, void *curr, lll_prepare_cb_t *resume_cb);
 static void abort_cb(struct lll_prepare_param *prepare_param, void *param);
 static void isr_esb(void *param);
 static void isr_done_cleanup(void *param);
+static void ticker_stop_cb(uint32_t ticks_at_expire, uint32_t ticks_drift, uint32_t remainder,
+                           uint16_t lazy, uint8_t force, void *param);
+static void ticker_op_start_cb(uint32_t status, void *param);
 
 /* LLL context. */
 
@@ -163,6 +179,20 @@ static int common_prepare_cb(struct lll_prepare_param *p, bool is_resume) {
 
     radio_tmr_start(0, ticks_at_start, remainder);
 
+    /* A resumed event keeps the mode it started in. */
+    if (!is_resume) {
+        lll->windowed = atomic_get(&low_power);
+    }
+
+    if (!is_resume && lll->windowed) {
+        uint32_t ret = ticker_start(TICKER_INSTANCE_ID_CTLR, TICKER_USER_ID_LLL, PRX_TICKER_ID_STOP,
+                                    ticks_at_start, HAL_TICKER_US_TO_TICKS(PRX_WINDOW_US),
+                                    TICKER_NULL_PERIOD, TICKER_NULL_REMAINDER, TICKER_NULL_LAZY,
+                                    TICKER_NULL_SLOT, ticker_stop_cb, lll, ticker_op_start_cb,
+                                    (void *)__LINE__);
+        LL_ASSERT((ret == TICKER_STATUS_SUCCESS) || (ret == TICKER_STATUS_BUSY));
+    }
+
     atomic_inc(&zmk_split_esb_stats.prx_windows);
 
     int err = lll_prepare_done(lll);
@@ -184,8 +214,16 @@ static int resume_prepare_cb(struct lll_prepare_param *p) {
 }
 
 static int is_abort_cb(void *next, void *curr, lll_prepare_cb_t *resume_cb) {
-    /* Our own next periodic prepare: keep listening, drop the new one. */
+    struct lll_prx *lll = curr;
+
+    /* Our own next periodic prepare. */
     if (next == curr) {
+        /* Switched to low power: end this continuous event and let the new
+         * prepare open a window instead. */
+        if (!lll->windowed && atomic_get(&low_power)) {
+            return -ECANCELED;
+        }
+
         /* The PPI that started reception is normally disabled by the first
          * radio ISR. With no packets and no BLE event since, it is still
          * armed, and the 24-bit event timer would fire it again after
@@ -197,14 +235,19 @@ static int is_abort_cb(void *next, void *curr, lll_prepare_cb_t *resume_cb) {
         return 0;
     }
 
-    /* Anything else is a BLE event, which always wins. Yield to it and get
-     * resumed once it's done. */
+    /* Anything else is a BLE event, which always wins. A window just ends;
+     * the next one is a period away. */
+    atomic_inc(&zmk_split_esb_stats.prx_preempts);
+    if (lll->windowed) {
+        return -ECANCELED;
+    }
+
+    /* Continuous listening yields and gets resumed once the BLE event is
+     * done. */
     *resume_cb = resume_prepare_cb;
 
     int err = lll_hfclock_on();
     LL_ASSERT(err >= 0);
-
-    atomic_inc(&zmk_split_esb_stats.prx_preempts);
 
     return -EAGAIN;
 }
@@ -232,6 +275,9 @@ static void isr_done_cleanup(void *param) {
     if (lll_is_done(param, &is_resume)) {
         return;
     }
+
+    /* The window's stop ticker may already have expired; ignore failure. */
+    (void)ticker_stop(TICKER_INSTANCE_ID_CTLR, TICKER_USER_ID_LLL, PRX_TICKER_ID_STOP, NULL, NULL);
 
     lll_isr_cleanup(param);
 }
@@ -332,6 +378,23 @@ static void ticker_cb(uint32_t ticks_at_expire, uint32_t ticks_drift, uint32_t r
     LL_ASSERT(!ret);
 }
 
+/* Closes a low-power window: disable the event from LLL context. */
+static void ticker_stop_cb(uint32_t ticks_at_expire, uint32_t ticks_drift, uint32_t remainder,
+                           uint16_t lazy, uint8_t force, void *param) {
+    static memq_link_t link;
+    static struct mayfly mfy = {0, 0, &link, NULL, lll_disable};
+
+    mfy.param = param;
+    uint32_t ret = mayfly_enqueue(TICKER_USER_ID_ULL_HIGH, TICKER_USER_ID_LLL, 0, &mfy);
+    LL_ASSERT(!ret);
+}
+
+static void ticker_op_start_cb(uint32_t status, void *param) {
+    ARG_UNUSED(param);
+
+    LL_ASSERT(status == TICKER_STATUS_SUCCESS);
+}
+
 static void ticker_op_cb(uint32_t status, void *param) {
     atomic_set(&zmk_split_esb_stats.prx_active, status == TICKER_STATUS_SUCCESS);
 }
@@ -358,10 +421,10 @@ int ull_user_init(void) {
 
     uint32_t ticks_anchor =
         ticker_ticks_now_get() + HAL_TICKER_US_TO_TICKS(EVENT_OVERHEAD_START_US);
-    uint32_t ret = ticker_start(
-        TICKER_INSTANCE_ID_CTLR, TICKER_USER_ID_THREAD, TICKER_ID_USER_BASE, ticks_anchor, 0,
-        HAL_TICKER_US_TO_TICKS(PRX_TICKER_INTERVAL_US), HAL_TICKER_REMAINDER(PRX_TICKER_INTERVAL_US),
-        TICKER_NULL_LAZY, TICKER_NULL_SLOT, ticker_cb, &prx, ticker_op_cb, NULL);
+    uint32_t ret = ticker_start(TICKER_INSTANCE_ID_CTLR, TICKER_USER_ID_THREAD, PRX_TICKER_ID,
+                                ticks_anchor, 0, HAL_TICKER_US_TO_TICKS(PRX_PERIOD_US),
+                                HAL_TICKER_REMAINDER(PRX_PERIOD_US), TICKER_NULL_LAZY,
+                                TICKER_NULL_SLOT, ticker_cb, &prx, ticker_op_cb, NULL);
 
     return (ret == TICKER_STATUS_SUCCESS || ret == TICKER_STATUS_BUSY) ? 0 : -EIO;
 }

@@ -24,14 +24,28 @@ config ZMK_SPLIT_ESB_PRX_AUTOSTART
     depends on ZMK_SPLIT_ESB_HOSTED_PRX
     default y
 
-config ZMK_SPLIT_ESB_PRX_TICKER_INTERVAL_MS
-    int "Period of the receiver's scheduler ticker (ms)"
+config ZMK_SPLIT_ESB_PRX_PERIOD_MS
+    int "Receiver period (ms)"
     depends on ZMK_SPLIT_ESB_HOSTED_PRX
-    default 100
+    default 20
     help
-      The receiver keeps listening across ticker periods and is resumed
-      after every BLE event, so this only bounds how long it can stay off
-      the air if a resume is ever lost.
+      In low-power mode a window opens once per period, which bounds the
+      extra latency of the first key after idle. While listening
+      continuously it only bounds how long the receiver could stay off the
+      air if a resume were ever lost.
+
+config ZMK_SPLIT_ESB_PRX_LOW_POWER_IDLE
+    bool "Listen in short windows while ZMK is idle"
+    depends on ZMK_SPLIT_ESB_HOSTED_PRX
+    default y
+    help
+      Peripherals retry for longer than one period, so their first packet
+      still lands in a window.
+
+config ZMK_SPLIT_ESB_PRX_LOW_POWER_WINDOW_MS
+    int "Low-power listening window (ms)"
+    depends on ZMK_SPLIT_ESB_PRX_LOW_POWER_IDLE
+    default 3
 
 config ZMK_SPLIT_ESB_PTX
     bool "Standalone ESB transmitter (peripheral without BLE)"
@@ -190,10 +204,11 @@ config ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING
     default y if ZMK_SPLIT_ESB_TRANSPORT && ZMK_SPLIT_ROLE_CENTRAL && ZMK_BATTERY_REPORTING
 
 # The controller's own defaults are 0 ticker ids and 5 event types. The hosted
-# receiver needs one ticker id and no proprietary HCI events, but a range of 0
+# receiver needs two ticker ids (period, window stop) and no proprietary HCI
+# events, but a range of 0
 # doesn't compile (the LISTIFY in ll_sw/lll.h leaves a stray comma), so keep 1.
 config BT_CTLR_USER_TICKER_ID_RANGE
-    default 1 if ZMK_SPLIT_ESB_HOSTED_PRX
+    default 2 if ZMK_SPLIT_ESB_HOSTED_PRX
 
 config BT_CTLR_USER_EVT_RANGE
     default 1 if ZMK_SPLIT_ESB_HOSTED_PRX

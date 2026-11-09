@@ -34,6 +34,7 @@ if(CONFIG_ZMK_SPLIT_ESB)
       ${BT_CTLR_DIR}/ll_sw/nordic/hci
     )
     zephyr_library_sources(src/ll_ext/prx_hosted.c)
+    zephyr_library_sources_ifdef(CONFIG_ZMK_SPLIT_ESB_PRX_LOW_POWER_IDLE src/ll_ext/prx_power.c)
   endif()
 
   zephyr_library_sources_ifdef(CONFIG_ZMK_SPLIT_ESB_DEBUG_SCREEN src/debug/esb_debug_screen.c)
