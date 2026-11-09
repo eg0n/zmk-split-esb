@@ -58,6 +58,7 @@ static uint8_t session;
 static uint8_t last_cmd_seq;
 static atomic_t keepalive_pending;
 static int64_t last_ack_ms;
+static int64_t first_failure_ms; /* 0: no packet given up on since the last ACK */
 static bool connected;
 static bool is_enabled;
 
@@ -195,8 +196,17 @@ static void done_work_cb(struct k_work *work) {
     handle_commands();
 
     if (atomic_get(&result_acked)) {
+        int64_t now = k_uptime_get();
+
+        /* An outage this long may have been the central restarting inside
+         * the link timeout, losing the battery level it had from us. */
+        if (first_failure_ms && now - first_failure_ms >= CONFIG_ZMK_SPLIT_ESB_RESYNC_OUTAGE_MS) {
+            queue_battery_level();
+        }
+        first_failure_ms = 0;
+
         in_flight = false;
-        last_ack_ms = k_uptime_get();
+        last_ack_ms = now;
         set_connected(true);
         k_work_submit(&send_work);
         return;
@@ -204,6 +214,9 @@ static void done_work_cb(struct k_work *work) {
 
     /* Ran out of retransmissions: the central is busy or gone. Back off and
      * resend the same packet. */
+    if (!first_failure_ms) {
+        first_failure_ms = k_uptime_get();
+    }
     if (k_uptime_get() - last_ack_ms > CONFIG_ZMK_SPLIT_ESB_LINK_TIMEOUT_MS) {
         set_connected(false);
     }

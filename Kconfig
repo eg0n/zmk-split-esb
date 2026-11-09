@@ -113,6 +113,14 @@ config ZMK_SPLIT_ESB_BATTERY_RESEND_KEEPALIVES
     int "Resend the battery level every this many keepalives"
     default 60
 
+config ZMK_SPLIT_ESB_RESYNC_OUTAGE_MS
+    int "Resend state after an outage this long (ms)"
+    default 250
+    help
+      A central that restarts comes back inside the link timeout, so the
+      peripheral resends its battery level after any outage this long.
+      Shorter than a reboot, longer than a missed low-power window.
+
 config ZMK_SPLIT_ESB_LINK_TIMEOUT_MS
     int "Time without packets before a link counts as lost (ms)"
     default 3000
