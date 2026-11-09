@@ -83,12 +83,13 @@ for part in "${parts[@]}"; do
     echo "== $name"
     part_settings "$part"
 
-    # Zephyr doesn't notice edits to this module's Kconfig in an existing
-    # build directory, so start it fresh whenever they change.
+    # Zephyr misses edits to this module's Kconfig in an existing build dir,
+    # and -D options stick in its cache, so start fresh when either changes.
     stamp="$here/build/$name/.module-kconfig"
-    kconfig_hash=$(cat "$here/Kconfig" "$here/zephyr/module.yml" | shasum | cut -d' ' -f1)
+    kconfig_hash=$( (cat "$here/Kconfig" "$here/zephyr/module.yml"; echo "${extra[@]+${extra[*]}}") |
+        shasum | cut -d' ' -f1)
     if [[ -d "$here/build/$name" && "$(cat "$stamp" 2>/dev/null)" != "$kconfig_hash" ]]; then
-        echo "   module Kconfig changed, rebuilding from scratch"
+        echo "   module Kconfig or build options changed, rebuilding from scratch"
         rm -rf "$here/build/$name"
     fi
 
