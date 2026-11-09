@@ -137,6 +137,9 @@ static void fill_lines(void) {
     fmt_count(lines[n++], "LNK", get(&s->link_up));
 #else
     snprintf(lines[n++], LINE_LEN + 1, "LNK %s", get(&s->link_up) ? "UP" : "--");
+    uint32_t key_count = get(&s->key_lat_count);
+    fmt_count(lines[n++], "LAT", key_count ? get(&s->key_lat_sum_us) / key_count : 0);
+    fmt_count(lines[n++], "MAX", get(&s->key_lat_max_us));
 #endif
 #endif
 
@@ -145,8 +148,6 @@ static void fill_lines(void) {
              zmk_ble_active_profile_is_connected() ? 'C' : '-');
 #elif IS_ENABLED(CONFIG_ZMK_SPLIT_BLE)
     snprintf(lines[n++], LINE_LEN + 1, "SPL %c", zmk_split_bt_peripheral_is_connected() ? 'C' : '-');
-#else
-    snprintf(lines[n++], LINE_LEN + 1, "BLE OFF");
 #endif
 
 #if IS_ENABLED(CONFIG_ZMK_USB)

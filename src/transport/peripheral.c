@@ -34,8 +34,12 @@ LOG_MODULE_DECLARE(zmk_split_esb, CONFIG_ZMK_SPLIT_ESB_LOG_LEVEL);
 #define RESEND_DELAY_MIN_MS 2
 #define RESEND_DELAY_MAX_MS 100
 
-K_MSGQ_DEFINE(event_q, sizeof(struct zmk_split_transport_peripheral_event),
-              CONFIG_ZMK_SPLIT_ESB_EVENT_QUEUE_SIZE, 4);
+struct queued_event {
+    struct zmk_split_transport_peripheral_event ev;
+    uint32_t queued_cycles;
+};
+
+K_MSGQ_DEFINE(event_q, sizeof(struct queued_event), CONFIG_ZMK_SPLIT_ESB_EVENT_QUEUE_SIZE, 4);
 
 struct cmd_item {
     uint8_t len;
@@ -47,12 +51,14 @@ K_MSGQ_DEFINE(cmd_q, sizeof(struct cmd_item), 4, 4);
 /* The packet being sent, owned by the work items below. */
 static uint8_t pkt[ESB_PHY_MAX_PAYLOAD];
 static uint8_t pkt_len;
+static uint32_t pkt_key_cycles; /* when its oldest key event was queued, or 0 */
 static bool in_flight;
 static uint8_t seq;
 static uint8_t resend_delay_ms;
 
 /* Set from the radio ISR, consumed by done_work. */
 static atomic_t result_acked;
+static atomic_t done_cycles;
 
 static uint8_t session;
 static uint8_t last_cmd_seq;
@@ -84,11 +90,12 @@ ZMK_SPLIT_TRANSPORT_PERIPHERAL_REGISTER(esb_peripheral, &api, CONFIG_ZMK_SPLIT_E
  * or missed it would show nothing. Resend it on link-up and periodically. */
 static void queue_battery_level(void) {
 #if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING)
-    struct zmk_split_transport_peripheral_event ev = {
-        .type = ZMK_SPLIT_TRANSPORT_PERIPHERAL_EVENT_TYPE_BATTERY_EVENT,
-        .data.battery_event.level = zmk_battery_state_of_charge(),
+    struct queued_event item = {
+        .ev.type = ZMK_SPLIT_TRANSPORT_PERIPHERAL_EVENT_TYPE_BATTERY_EVENT,
+        .ev.data.battery_event.level = zmk_battery_state_of_charge(),
+        .queued_cycles = k_cycle_get_32(),
     };
-    k_msgq_put(&event_q, &ev, K_NO_WAIT);
+    k_msgq_put(&event_q, &item, K_NO_WAIT);
 #endif
 }
 
@@ -129,23 +136,28 @@ static void send_work_cb(struct k_work *work) {
         return;
     }
 
-    struct zmk_split_transport_peripheral_event ev;
+    struct queued_event item;
     uint8_t len = ESB_FRAME_PERIPHERAL_HEADER;
+    uint32_t key_cycles = 0;
 
-    while (k_msgq_peek(&event_q, &ev) == 0) {
-        ssize_t size = esb_frame_event_data_size(ev.type);
+    while (k_msgq_peek(&event_q, &item) == 0) {
+        ssize_t size = esb_frame_event_data_size(item.ev.type);
         if (size < 0) {
-            k_msgq_get(&event_q, &ev, K_NO_WAIT);
+            k_msgq_get(&event_q, &item, K_NO_WAIT);
             continue;
         }
         if (len + 1 + size > sizeof(pkt)) {
             break;
         }
 
-        pkt[len++] = ev.type;
-        memcpy(&pkt[len], &ev.data, size);
+        if (item.ev.type == ZMK_SPLIT_TRANSPORT_PERIPHERAL_EVENT_TYPE_KEY_POSITION_EVENT &&
+            !key_cycles) {
+            key_cycles = item.queued_cycles ? item.queued_cycles : 1;
+        }
+        pkt[len++] = item.ev.type;
+        memcpy(&pkt[len], &item.ev.data, size);
         len += size;
-        k_msgq_get(&event_q, &ev, K_NO_WAIT);
+        k_msgq_get(&event_q, &item, K_NO_WAIT);
     }
 
     if (len == ESB_FRAME_PERIPHERAL_HEADER && !atomic_clear(&keepalive_pending)) {
@@ -156,6 +168,7 @@ static void send_work_cb(struct k_work *work) {
     pkt[1] = last_cmd_seq;
     pkt[2] = session;
     pkt_len = len;
+    pkt_key_cycles = key_cycles;
     in_flight = true;
     resend_delay_ms = RESEND_DELAY_MIN_MS;
     transmit();
@@ -205,6 +218,17 @@ static void done_work_cb(struct k_work *work) {
         }
         first_failure_ms = 0;
 
+        /* Key latency: queued on this half until the central ACKed it. */
+        if (pkt_key_cycles) {
+            uint32_t us = k_cyc_to_us_floor32((uint32_t)atomic_get(&done_cycles) - pkt_key_cycles);
+            atomic_set(&zmk_split_esb_stats.key_lat_last_us, us);
+            atomic_add(&zmk_split_esb_stats.key_lat_sum_us, us);
+            atomic_inc(&zmk_split_esb_stats.key_lat_count);
+            if (us > (uint32_t)atomic_get(&zmk_split_esb_stats.key_lat_max_us)) {
+                atomic_set(&zmk_split_esb_stats.key_lat_max_us, us);
+            }
+        }
+
         in_flight = false;
         last_ack_ms = now;
         set_connected(true);
@@ -231,6 +255,7 @@ static void ptx_done(bool acked, const uint8_t *ack, uint8_t ack_len) {
         k_msgq_put(&cmd_q, &item, K_NO_WAIT);
     }
 
+    atomic_set(&done_cycles, (atomic_val_t)k_cycle_get_32());
     atomic_set(&result_acked, acked);
     k_work_submit(&done_work);
 }
@@ -254,7 +279,8 @@ bool zmk_split_bt_peripheral_is_connected(void) { return connected; }
 #endif
 
 static int report_event(const struct zmk_split_transport_peripheral_event *event) {
-    int err = k_msgq_put(&event_q, event, K_NO_WAIT);
+    struct queued_event item = {.ev = *event, .queued_cycles = k_cycle_get_32()};
+    int err = k_msgq_put(&event_q, &item, K_NO_WAIT);
     if (err) {
         LOG_WRN("ESB event queue full, dropping event type %d", event->type);
         return -ENOMEM;

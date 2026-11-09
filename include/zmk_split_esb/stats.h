@@ -30,6 +30,10 @@ struct zmk_split_esb_stats {
     atomic_t channel;
     atomic_t last_rx_ms;
     atomic_t last_rtt_us;
+    atomic_t key_lat_last_us; /* peripheral: key event queued until ACKed */
+    atomic_t key_lat_max_us;
+    atomic_t key_lat_sum_us;
+    atomic_t key_lat_count;
 };
 
 extern struct zmk_split_esb_stats zmk_split_esb_stats;

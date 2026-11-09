@@ -70,7 +70,8 @@ the nice!view shows, top to bottom:
 | `CH` | `CH` | current RF channel |
 | `AGE` | `RTT` | ms since the peripheral was last heard / last round trip (µs) |
 | `LNK n` | `LNK UP` | peripherals heard in the last 3 s / link to the central |
-| `BLE Pn C` | `BLE OFF` | active BLE profile and whether it's connected |
+| | `LAT`, `MAX` | key events, queued until the central ACKed them: average and worst (µs) |
+| `BLE Pn C` | | active BLE profile and whether it's connected |
 | `BAT` | `BAT` | battery %, or `USB` while USB-powered (the voltage estimate reads 100% while charging) |
 | `UP` | `UP` | uptime in seconds |
 | `RST` | `RST` | last reset cause (`SOFT` after an assert reboot) |
