@@ -251,6 +251,9 @@ static const struct zmk_split_transport_peripheral_api api = {
 static uint8_t random_session(void) {
     uint8_t value;
 
+    /* The bootloader may have left it running with its interrupt enabled. */
+    nrf_rng_int_disable(NRF_RNG, NRF_RNG_INT_VALRDY_MASK);
+    nrf_rng_shorts_disable(NRF_RNG, NRF_RNG_SHORT_VALRDY_STOP_MASK);
     nrf_rng_event_clear(NRF_RNG, NRF_RNG_EVENT_VALRDY);
     nrf_rng_task_trigger(NRF_RNG, NRF_RNG_TASK_START);
     do {
