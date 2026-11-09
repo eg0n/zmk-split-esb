@@ -38,6 +38,8 @@ config ZMK_SPLIT_ESB_PTX
     default y if !ZMK_SPLIT_ROLE_CENTRAL
     depends on !ZMK_SPLIT_ROLE_CENTRAL && !BT_CTLR
     select CLOCK_CONTROL
+    # ZMK only implies this from ZMK_BLE, which an ESB peripheral turns off.
+    imply ZMK_BATTERY_REPORTING
 
 config ZMK_SPLIT_ESB_PTX_HFXO_HOLD_MS
     int "Keep the crystal oscillator running this long after a packet (ms)"
@@ -181,6 +183,11 @@ module-str = ZMK_SPLIT_ESB
 source "subsys/logging/Kconfig.template.log_config"
 
 endif # ZMK_SPLIT_ESB
+
+# ZMK only handles peripheral battery events with this on. It lives in BLE
+# split's Kconfig, which the central keeps built in.
+config ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING
+    default y if ZMK_SPLIT_ESB_TRANSPORT && ZMK_SPLIT_ROLE_CENTRAL && ZMK_BATTERY_REPORTING
 
 # The controller's own defaults are 0 ticker ids and 5 event types. The hosted
 # receiver needs one ticker id and no proprietary HCI events, but a range of 0

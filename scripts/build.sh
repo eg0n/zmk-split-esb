@@ -31,6 +31,15 @@ mkdir -p "$here/build"
 for side in "${sides[@]}"; do
     name="corne_$side$suffix"
     echo "== $name"
+
+    # Zephyr doesn't notice edits to this module's Kconfig in an existing
+    # build directory, so start it fresh whenever they change.
+    stamp="$here/build/$name/.module-kconfig"
+    kconfig_hash=$(cat "$here/Kconfig" "$here/zephyr/module.yml" | shasum | cut -d' ' -f1)
+    if [[ -d "$here/build/$name" && "$(cat "$stamp" 2>/dev/null)" != "$kconfig_hash" ]]; then
+        echo "   module Kconfig changed, rebuilding from scratch"
+        rm -rf "$here/build/$name"
+    fi
     docker run --rm \
         -v "$zmk_dir":/workspaces/zmk \
         -v zmk-zephyr:/workspaces/zmk/zephyr:ro \
@@ -47,6 +56,7 @@ for side in "${sides[@]}"; do
             -DEXTRA_CONF_FILE="/workspaces/zmk-split-esb/conf/corne_$side.conf" \
             -DDTS_EXTRA_CPPFLAGS="$cppflags" \
             "$@"
+    echo "$kconfig_hash" > "$stamp"
     cp "$here/build/$name/zephyr/zmk.uf2" "$here/build/$name.uf2"
 done
 
