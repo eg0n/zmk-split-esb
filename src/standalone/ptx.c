@@ -196,27 +196,11 @@ static int ptx_init(void) {
     while (sys_notify_fetch_result(&cli.notify, &res) == -EAGAIN) {
     }
 
-    /* After a UF2 flash the bootloader can jump here without a chip reset,
-     * leaving RADIO and TIMER2 configured with interrupts enabled. A stray
-     * enabled event our ISRs don't clear would fire forever. Power-cycling
-     * RADIO restores all its registers; TIMER2 is cleared by hand. */
-    nrf_radio_power_set(NRF_RADIO, false);
-    nrf_radio_power_set(NRF_RADIO, true);
-
-    nrf_timer_task_trigger(PTX_TIMER, NRF_TIMER_TASK_STOP);
-    nrf_timer_task_trigger(PTX_TIMER, NRF_TIMER_TASK_CLEAR);
-    nrf_timer_int_disable(PTX_TIMER, UINT32_MAX);
-    nrf_timer_shorts_disable(PTX_TIMER, UINT32_MAX);
-    for (int i = 0; i < NRF_TIMER_CC_COUNT_MAX; i++) {
-        nrf_timer_event_clear(PTX_TIMER, nrf_timer_compare_event_get(i));
-    }
-    NVIC_ClearPendingIRQ(RADIO_IRQn);
-    NVIC_ClearPendingIRQ(PTX_TIMER_IRQn);
-
     nrf_timer_mode_set(PTX_TIMER, NRF_TIMER_MODE_TIMER);
     nrf_timer_bit_width_set(PTX_TIMER, NRF_TIMER_BIT_WIDTH_32);
     nrf_timer_prescaler_set(PTX_TIMER, NRF_TIMER_FREQ_1MHz);
 
+    nrf_radio_power_set(NRF_RADIO, true);
     esb_phy_configure();
     NRF_RADIO->TXADDRESS = PIPE;
     NRF_RADIO->RXADDRESSES = BIT(PIPE);
