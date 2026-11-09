@@ -102,10 +102,11 @@ these checked out in `ZMK_MODULES_DIR`, and builds whatever branch each is on:
 - `zmk-rgbled-widget`, branch `feat/esb-split` of
   [eg0n/zmk-rgbled-widget](https://github.com/eg0n/zmk-rgbled-widget) for the
   link-status blink on ESB peripherals
-- `prospector-zmk-module`, branch `feat/esb-split` of
+- `prospector-zmk-module`, branch `feat/new-status-screens-esb` of
   [eg0n/prospector-zmk-module](https://github.com/eg0n/prospector-zmk-module)
-  for the connection indicators; the dongle uses the `PROSPECTOR_LAYOUT`
-  screen (default `crystal`)
+  (carrefinho's `feat/new-status-screens` plus the connection indicators);
+  set `PROSPECTOR_LAYOUT` (classic, radii, field, operator) to pick a screen
+  other than its default
 
 Extra CMake arguments build into a separate directory and image, so test
 options don't leak into normal builds:
