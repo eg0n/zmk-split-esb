@@ -13,6 +13,11 @@ if(CONFIG_ZMK_SPLIT_ESB)
   endif()
   zephyr_library_sources_ifdef(CONFIG_ZMK_SPLIT_ESB_PTX src/standalone/ptx.c)
 
+  if(CONFIG_ZMK_SPLIT_ESB_TRANSPORT)
+    zephyr_library_sources_ifdef(CONFIG_ZMK_SPLIT_ESB_HOSTED_PRX src/transport/central.c)
+    zephyr_library_sources_ifdef(CONFIG_ZMK_SPLIT_ESB_PTX src/transport/peripheral.c)
+  endif()
+
   if(CONFIG_ZMK_SPLIT_ESB_HOSTED_PRX)
     # With BT_CTLR_USER_EXT the controller's own sources include
     # "ull_vendor.h", so that header has to be on the global include path.

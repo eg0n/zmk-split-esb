@@ -7,10 +7,15 @@
 
 #include <zephyr/sys/atomic.h>
 
+/* Below CONFIG_KERNEL_INIT_PRIORITY_DEFAULT, where ZMK's split code selects
+ * and enables transports, and before Bluetooth starts the receiver. */
+#define ZMK_SPLIT_ESB_EARLY_INIT_PRIORITY 30
+
 /* Counters kept by the radio code and shown on the debug screen. Writers may
  * run in the radio ISR, so every field is atomic. */
 struct zmk_split_esb_stats {
     atomic_t prx_active;
+    atomic_t link_up; /* peripherals heard recently (central), or 0/1 (peripheral) */
     atomic_t prx_windows;
     atomic_t prx_preempts;
     atomic_t rx_ok;

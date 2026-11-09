@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <string.h>
 
 #include <zephyr/kernel.h>
 #include <soc.h>
@@ -77,6 +78,32 @@ static struct {
 static zmk_split_esb_prx_rx_cb_t rx_cb;
 
 void zmk_split_esb_prx_set_rx_cb(zmk_split_esb_prx_rx_cb_t cb) { rx_cb = cb; }
+
+/* The thread writes data only while len is 0 and publishes it by setting
+ * len; the ISR reads data only while len is non-zero. */
+static struct {
+    atomic_t len;
+    uint8_t data[ESB_PHY_MAX_PAYLOAD];
+} ack_slot[8];
+
+int zmk_split_esb_prx_stage_ack(uint8_t pipe, const uint8_t *data, uint8_t len) {
+    if (pipe >= ARRAY_SIZE(ack_slot) || len == 0 || len > ESB_PHY_MAX_PAYLOAD) {
+        return -EINVAL;
+    }
+    if (atomic_get(&ack_slot[pipe].len)) {
+        return -EBUSY;
+    }
+
+    memcpy(ack_slot[pipe].data, data, len);
+    atomic_set(&ack_slot[pipe].len, len);
+    return 0;
+}
+
+void zmk_split_esb_prx_clear_ack(uint8_t pipe) {
+    if (pipe < ARRAY_SIZE(ack_slot)) {
+        atomic_set(&ack_slot[pipe].len, 0);
+    }
+}
 
 static int prepare_cb(struct lll_prepare_param *p);
 static int resume_prepare_cb(struct lll_prepare_param *p);
@@ -247,7 +274,11 @@ static void on_rx_disabled(void) {
         /* SHORTS already started TX ramp-up when the radio disabled; it has
          * ~130 us before it reads PACKETPTR. */
         NRF_RADIO->TXADDRESS = pipe;
-        esb_phy_set_header(ack_buf, 0, pid, false);
+        uint8_t ack_len = atomic_get(&ack_slot[pipe].len);
+        if (ack_len) {
+            memcpy(ESB_PHY_PAYLOAD(ack_buf), ack_slot[pipe].data, ack_len);
+        }
+        esb_phy_set_header(ack_buf, ack_len, pid, false);
         NRF_RADIO->PACKETPTR = (uint32_t)ack_buf;
         NRF_RADIO->SHORTS = ESB_PHY_SHORTS_COMMON | NRF_RADIO_SHORT_DISABLED_RXEN_MASK;
         state = PRX_STATE_TX_ACK;

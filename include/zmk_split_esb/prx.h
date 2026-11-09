@@ -12,3 +12,9 @@
 typedef void (*zmk_split_esb_prx_rx_cb_t)(uint8_t pipe, const uint8_t *data, uint8_t len);
 
 void zmk_split_esb_prx_set_rx_cb(zmk_split_esb_prx_rx_cb_t cb);
+
+/* Payload to attach to every ACK sent on this pipe until it is cleared.
+ * Returns -EBUSY if one is already staged. Call from thread context. */
+int zmk_split_esb_prx_stage_ack(uint8_t pipe, const uint8_t *data, uint8_t len);
+
+void zmk_split_esb_prx_clear_ack(uint8_t pipe);

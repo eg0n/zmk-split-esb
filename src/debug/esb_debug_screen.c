@@ -128,6 +128,14 @@ static void fill_lines(void) {
     fmt_count(lines[n++], "RTT", get(&s->last_rtt_us));
 #endif
 
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_ESB_TRANSPORT)
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
+    fmt_count(lines[n++], "LNK", get(&s->link_up));
+#else
+    snprintf(lines[n++], LINE_LEN + 1, "LNK %s", get(&s->link_up) ? "UP" : "--");
+#endif
+#endif
+
 #if IS_ENABLED(CONFIG_ZMK_BLE) && IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
     snprintf(lines[n++], LINE_LEN + 1, "BLE P%u %c", (uint8_t)(zmk_ble_active_profile_index() + 1) % 10,
              zmk_ble_active_profile_is_connected() ? 'C' : '-');

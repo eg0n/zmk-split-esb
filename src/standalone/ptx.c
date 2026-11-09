@@ -44,6 +44,7 @@ enum ptx_state {
     PTX_STATE_RETRANSMIT_WAIT,
 };
 
+static bool ready;
 static volatile enum ptx_state state;
 static uint8_t tx_buf[ESB_PHY_BUF_SIZE];
 static uint8_t ack_buf[ESB_PHY_BUF_SIZE];
@@ -83,6 +84,8 @@ static void finish(bool acked) {
     state = PTX_STATE_IDLE;
     pid = (pid + 1) & 0x3;
 
+    uint8_t ack_len = acked ? MIN(ESB_PHY_LEN(ack_buf), ESB_PHY_MAX_PAYLOAD) : 0;
+
     if (acked) {
         atomic_inc(&zmk_split_esb_stats.tx_acked);
         atomic_set(&zmk_split_esb_stats.last_rtt_us,
@@ -92,7 +95,7 @@ static void finish(bool acked) {
     }
 
     if (done_cb) {
-        done_cb(acked);
+        done_cb(acked, ESB_PHY_PAYLOAD(ack_buf), ack_len);
     }
 }
 
@@ -161,7 +164,7 @@ int zmk_split_esb_ptx_send(const uint8_t *data, uint8_t len) {
 
     unsigned int key = irq_lock();
 
-    if (state != PTX_STATE_IDLE) {
+    if (!ready || state != PTX_STATE_IDLE) {
         irq_unlock(key);
         return -EBUSY;
     }
@@ -209,11 +212,13 @@ static int ptx_init(void) {
     irq_enable(PTX_TIMER_IRQn);
 
     atomic_set(&zmk_split_esb_stats.channel, CONFIG_ZMK_SPLIT_ESB_RF_CHANNEL);
+    ready = true;
 
     return 0;
 }
 
-SYS_INIT(ptx_init, APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY);
+/* Before ZMK's split peripheral enables transports, which starts sending. */
+SYS_INIT(ptx_init, APPLICATION, ZMK_SPLIT_ESB_EARLY_INIT_PRIORITY);
 
 #if IS_ENABLED(CONFIG_ZMK_SPLIT_ESB_TEST_PTX)
 

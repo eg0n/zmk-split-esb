@@ -12,10 +12,13 @@ transmit ESB only.
 
 ## Status
 
-**Phase 1 (untested on hardware):** the central hosts an ESB receiver in the
-gaps between BLE events, and the test peripheral sends a counter packet every
-10 ms. Keys on the peripheral do nothing yet. Phase 0 (hooks compiled in,
-debug screen, assert record) is verified on a Corne.
+**Phase 2 (untested on hardware):** a full ZMK split transport. Key, sensor,
+input and battery events go from peripheral to central, packed several to a
+packet, and central commands come back in ESB ACK payloads. BLE split stays
+built in on the central (ZMK sizes its per-peripheral state from it) but ESB
+has transport priority 0, so BLE split is never enabled and never scans.
+Phase 1 (hosted receiver alongside BLE: 12,000 packets, 0.6% retransmitted,
+none lost) and phase 0 are verified on a Corne.
 
 | Phase | Goal |
 |---|---|
@@ -40,7 +43,8 @@ the nice!view shows, top to bottom:
 | `ACK` | `HOP` | ACK payloads sent / channel hops |
 | `CH` | `CH` | current RF channel |
 | `AGE` | `RTT` | ms since the peripheral was last heard / last round trip (µs) |
-| `BLE Pn C` | `SPL C` | active BLE profile and whether it's connected / BLE split link |
+| `LNK n` | `LNK UP` | peripherals heard in the last 3 s / link to the central |
+| `BLE Pn C` | `BLE OFF` | active BLE profile and whether it's connected |
 | `BAT` | `BAT` | battery %, or `USB` while USB-powered (the voltage estimate reads 100% while charging) |
 | `UP` | `UP` | uptime in seconds |
 | `RST` | `RST` | last reset cause (`SOFT` after an assert reboot) |

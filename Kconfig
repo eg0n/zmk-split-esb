@@ -64,6 +64,45 @@ config ZMK_SPLIT_ESB_TEST_PTX_INTERVAL_MS
     depends on ZMK_SPLIT_ESB_TEST_PTX
     default 10
 
+config ZMK_SPLIT_ESB_TRANSPORT
+    bool "ZMK split transport over ESB"
+    default y if (ZMK_SPLIT_ESB_HOSTED_PRX || ZMK_SPLIT_ESB_PTX) && !ZMK_SPLIT_ESB_TEST_PTX
+    depends on (ZMK_SPLIT_ESB_HOSTED_PRX || ZMK_SPLIT_ESB_PTX) && !ZMK_SPLIT_ESB_TEST_PTX
+
+if ZMK_SPLIT_ESB_TRANSPORT
+
+config ZMK_SPLIT_ESB_PRIORITY
+    int "ESB transport priority"
+    default 0
+    help
+      Lower numbers win. BLE split defaults to 1, so with both built in ZMK
+      uses ESB, and BLE split stays idle (no scanning or advertising).
+
+config ZMK_SPLIT_ESB_KEEPALIVE_MS
+    int "Peripheral keepalive period (ms)"
+    default 1000
+    help
+      Also bounds how long a command from the central waits for an idle
+      peripheral, since commands ride on ACKs.
+
+config ZMK_SPLIT_ESB_LINK_TIMEOUT_MS
+    int "Time without packets before a link counts as lost (ms)"
+    default 3000
+
+config ZMK_SPLIT_ESB_EVENT_QUEUE_SIZE
+    int "Peripheral event queue length"
+    default 64
+
+config ZMK_SPLIT_ESB_RX_QUEUE_SIZE
+    int "Central receive queue length (packets)"
+    default 32
+
+config ZMK_SPLIT_ESB_CMD_QUEUE_SIZE
+    int "Central command queue length"
+    default 8
+
+endif # ZMK_SPLIT_ESB_TRANSPORT
+
 config ZMK_SPLIT_ESB_RF_CHANNEL
     int "RF channel (2400 MHz + n)"
     range 0 100
