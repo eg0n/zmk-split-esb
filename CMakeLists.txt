@@ -8,6 +8,11 @@ if(CONFIG_ZMK_SPLIT_ESB)
 
   zephyr_library_sources(src/stats.c)
 
+  if(CONFIG_ZMK_SPLIT_ESB_HOSTED_PRX OR CONFIG_ZMK_SPLIT_ESB_PTX)
+    zephyr_library_sources(src/phy/esb_phy.c)
+  endif()
+  zephyr_library_sources_ifdef(CONFIG_ZMK_SPLIT_ESB_PTX src/standalone/ptx.c)
+
   if(CONFIG_ZMK_SPLIT_ESB_HOSTED_PRX)
     # With BT_CTLR_USER_EXT the controller's own sources include
     # "ull_vendor.h", so that header has to be on the global include path.
@@ -20,6 +25,7 @@ if(CONFIG_ZMK_SPLIT_ESB)
       ${BT_CTLR_DIR}/include
       ${BT_CTLR_DIR}/ll_sw
       ${BT_CTLR_DIR}/ll_sw/nordic
+      ${BT_CTLR_DIR}/ll_sw/nordic/lll
       ${BT_CTLR_DIR}/ll_sw/nordic/hci
     )
     zephyr_library_sources(src/ll_ext/prx_hosted.c)

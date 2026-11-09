@@ -12,9 +12,10 @@ transmit ESB only.
 
 ## Status
 
-**Phase 0:** the controller hooks are compiled in but schedule nothing, so BLE
-behaves exactly as without the module. The nice!view debug screen and the
-controller assert record work.
+**Phase 1 (untested on hardware):** the central hosts an ESB receiver in the
+gaps between BLE events, and the test peripheral sends a counter packet every
+10 ms. Keys on the peripheral do nothing yet. Phase 0 (hooks compiled in,
+debug screen, assert record) is verified on a Corne.
 
 | Phase | Goal |
 |---|---|

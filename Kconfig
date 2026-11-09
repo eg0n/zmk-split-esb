@@ -19,6 +19,82 @@ config ZMK_SPLIT_ESB_HOSTED_PRX
     select BT_CTLR_ASSERT_HANDLER
     select ZMK_SPLIT_ESB_ASSERT_RECORD
 
+config ZMK_SPLIT_ESB_PRX_AUTOSTART
+    bool "Start listening as soon as the controller initialises"
+    depends on ZMK_SPLIT_ESB_HOSTED_PRX
+    default y
+
+config ZMK_SPLIT_ESB_PRX_TICKER_INTERVAL_MS
+    int "Period of the receiver's scheduler ticker (ms)"
+    depends on ZMK_SPLIT_ESB_HOSTED_PRX
+    default 100
+    help
+      The receiver keeps listening across ticker periods and is resumed
+      after every BLE event, so this only bounds how long it can stay off
+      the air if a resume is ever lost.
+
+config ZMK_SPLIT_ESB_PTX
+    bool "Standalone ESB transmitter (peripheral without BLE)"
+    default y if !ZMK_SPLIT_ROLE_CENTRAL
+    depends on !ZMK_SPLIT_ROLE_CENTRAL && !BT_CTLR
+    select CLOCK_CONTROL
+
+config ZMK_SPLIT_ESB_PERIPHERAL_ID
+    int "Peripheral id, which is also its ESB pipe"
+    depends on ZMK_SPLIT_ESB_PTX
+    range 1 7
+    default 1
+
+config ZMK_SPLIT_ESB_PTX_RETRANSMIT_COUNT
+    int "Retransmissions before a packet is given up on"
+    depends on ZMK_SPLIT_ESB_PTX
+    default 10
+
+config ZMK_SPLIT_ESB_PTX_RETRANSMIT_DELAY_US
+    int "Delay between retransmissions (us)"
+    depends on ZMK_SPLIT_ESB_PTX
+    default 500
+
+config ZMK_SPLIT_ESB_TEST_PTX
+    bool "Send a counter packet every few ms (phase 1 test traffic)"
+    depends on ZMK_SPLIT_ESB_PTX
+
+config ZMK_SPLIT_ESB_TEST_PTX_INTERVAL_MS
+    int "Test packet interval (ms)"
+    depends on ZMK_SPLIT_ESB_TEST_PTX
+    default 10
+
+config ZMK_SPLIT_ESB_RF_CHANNEL
+    int "RF channel (2400 MHz + n)"
+    range 0 100
+    default 74
+    help
+      The default sits above Wi-Fi channel 11 and away from the BLE
+      advertising channels (2402, 2426, 2480 MHz).
+
+config ZMK_SPLIT_ESB_TX_POWER_DBM
+    int "TX power (dBm): 8, 4, 0, -4 or -8"
+    default 4
+
+config ZMK_SPLIT_ESB_BASE_ADDR0
+    hex "ESB base address 0 (pipe 0)"
+    default 0xE7E7E7E7
+
+config ZMK_SPLIT_ESB_BASE_ADDR1
+    hex "ESB base address 1 (pipes 1-7)"
+    default 0xC2C2C2C2
+    help
+      Change this, or the prefixes, per keyboard so two keyboards nearby
+      don't hear each other.
+
+config ZMK_SPLIT_ESB_ADDR_PREFIX0
+    hex "Address prefixes for pipes 3..0 (low byte is pipe 0)"
+    default 0xC4C3C2E7
+
+config ZMK_SPLIT_ESB_ADDR_PREFIX1
+    hex "Address prefixes for pipes 7..4 (low byte is pipe 4)"
+    default 0xC8C7C6C5
+
 config ZMK_SPLIT_ESB_ASSERT_RECORD
     bool "Keep the last controller assert across a reboot"
     select REBOOT
