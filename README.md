@@ -40,7 +40,7 @@ the nice!view shows, top to bottom:
 | `CH` | `CH` | current RF channel |
 | `AGE` | `RTT` | ms since the peripheral was last heard / last round trip (µs) |
 | `BLE Pn C` | `SPL C` | active BLE profile and whether it's connected / BLE split link |
-| `BAT` | `BAT` | battery % |
+| `BAT` | `BAT` | battery %, or `USB` while USB-powered (the voltage estimate reads 100% while charging) |
 | `UP` | `UP` | uptime in seconds |
 | `RST` | `RST` | last reset cause (`SOFT` after an assert reboot) |
 | `AS#` | `AS#` | controller asserts recorded, then the file and line of the last one |

@@ -14,6 +14,9 @@
 #include <lvgl.h>
 
 #include <zmk/display.h>
+#include <zmk/activity.h>
+#include <zmk/event_manager.h>
+#include <zmk/events/activity_state_changed.h>
 #include <zmk_split_esb/stats.h>
 
 #if IS_ENABLED(CONFIG_ZMK_BLE)
@@ -21,6 +24,9 @@
 #endif
 #if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING)
 #include <zmk/battery.h>
+#endif
+#if IS_ENABLED(CONFIG_ZMK_USB)
+#include <zmk/usb.h>
 #endif
 #if IS_ENABLED(CONFIG_ZMK_SPLIT_BLE) && !IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
 #include <zmk/split/bluetooth/peripheral.h>
@@ -31,6 +37,9 @@
 #define CANVAS_BUF_SIZE                                                                            \
     LV_CANVAS_BUF_SIZE(CANVAS_SIZE, CANVAS_SIZE, LV_COLOR_FORMAT_GET_BPP(CANVAS_COLOR_FORMAT),     \
                        LV_DRAW_BUF_STRIDE_ALIGN)
+
+/* Redraw slowly while idle: the memory LCD stays on, but nothing is changing. */
+#define IDLE_REFRESH_MS 5000
 
 #define LINE_HEIGHT 8 /* unscii_8 is an 8x8 monospace font: 8 columns fit in 68 px */
 #define LINE_LEN 8
@@ -128,11 +137,20 @@ static void fill_lines(void) {
     snprintf(lines[n++], LINE_LEN + 1, "BLE OFF");
 #endif
 
-#if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING)
-    snprintf(lines[n++], LINE_LEN + 1, "BAT %3u%%", zmk_battery_state_of_charge());
-#else
-    n++;
+#if IS_ENABLED(CONFIG_ZMK_USB)
+    /* While charging, the cell sits near the charger's 4.2 V, so the
+     * voltage-based estimate reads 100% however empty the battery is. */
+    if (zmk_usb_is_powered()) {
+        snprintf(lines[n++], LINE_LEN + 1, "BAT USB");
+    } else
 #endif
+    {
+#if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING)
+        snprintf(lines[n++], LINE_LEN + 1, "BAT %3u%%", zmk_battery_state_of_charge());
+#else
+        n++;
+#endif
+    }
 
     fmt_count(lines[n++], "UP", (uint32_t)(k_uptime_get() / 1000));
     snprintf(lines[n++], LINE_LEN + 1, "RST %s", reset_cause_str(reset_cause));
@@ -179,9 +197,24 @@ static K_WORK_DELAYABLE_DEFINE(refresh_work, refresh_cb);
 static void refresh_cb(struct k_work *work) {
     fill_lines();
     draw();
-    k_work_schedule_for_queue(zmk_display_work_q(), &refresh_work,
-                              K_MSEC(CONFIG_ZMK_SPLIT_ESB_DEBUG_SCREEN_REFRESH_MS));
+
+    uint32_t period_ms = zmk_activity_get_state() == ZMK_ACTIVITY_ACTIVE
+                             ? CONFIG_ZMK_SPLIT_ESB_DEBUG_SCREEN_REFRESH_MS
+                             : IDLE_REFRESH_MS;
+    k_work_schedule_for_queue(zmk_display_work_q(), &refresh_work, K_MSEC(period_ms));
 }
+
+/* Refresh straight away on waking instead of waiting out the idle period. */
+static int activity_listener(const zmk_event_t *eh) {
+    const struct zmk_activity_state_changed *ev = as_zmk_activity_state_changed(eh);
+    if (ev && ev->state == ZMK_ACTIVITY_ACTIVE && canvases[0]) {
+        k_work_reschedule_for_queue(zmk_display_work_q(), &refresh_work, K_NO_WAIT);
+    }
+    return ZMK_EV_EVENT_BUBBLE;
+}
+
+ZMK_LISTENER(esb_debug_screen, activity_listener);
+ZMK_SUBSCRIPTION(esb_debug_screen, zmk_activity_state_changed);
 
 lv_obj_t *zmk_display_status_screen(void) {
     hwinfo_get_reset_cause(&reset_cause);
