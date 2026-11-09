@@ -10,7 +10,7 @@ zmk_dir=${ZMK_DIR:-$HOME/src/zmk}
 config_dir=${ZMK_CONFIG_DIR:-$HOME/src/miryoku_zmk}
 modules_dir=${ZMK_MODULES_DIR:-$HOME/src/zmk-modules}
 image=${ZMK_BUILD_IMAGE:-zmkfirmware/zmk-build-arm:stable}
-layout=${PROSPECTOR_LAYOUT:-}
+layout=${PROSPECTOR_LAYOUT:-operator}
 
 keyboard=corne
 case "${1:-}" in
@@ -62,9 +62,8 @@ part_settings() {
             if [[ "$part" == dongle ]]; then
                 shield="totem_dongle prospector_adapter"
                 modules="$modules /workspaces/zmk-modules/prospector-zmk-module"
-                if [[ -n "$layout" ]]; then
-                    extra=("-DCONFIG_PROSPECTOR_STATUS_SCREEN_$(echo "$layout" | tr "[:lower:]" "[:upper:]")=y")
-                fi
+                cppflags="$cppflags;-DBACKLIGHT_BEHAVIORS"
+                extra=("-DCONFIG_PROSPECTOR_STATUS_SCREEN_$(echo "$layout" | tr "[:lower:]" "[:upper:]")=y")
             else
                 shield="totem_$part rgbled_adapter"
             fi
