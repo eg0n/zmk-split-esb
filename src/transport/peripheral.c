@@ -18,6 +18,10 @@
 #include <zmk/split/transport/peripheral.h>
 #include <zmk/split/transport/types.h>
 
+#if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING)
+#include <zmk/battery.h>
+#endif
+
 #include <zmk_split_esb/ptx.h>
 #include <zmk_split_esb/stats.h>
 
@@ -74,9 +78,25 @@ static const struct zmk_split_transport_peripheral_api api;
 
 ZMK_SPLIT_TRANSPORT_PERIPHERAL_REGISTER(esb_peripheral, &api, CONFIG_ZMK_SPLIT_ESB_PRIORITY);
 
+/* ZMK reports the battery only when it changes, so a central that rebooted
+ * or missed it would show nothing. Resend it on link-up and periodically. */
+static void queue_battery_level(void) {
+#if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING)
+    struct zmk_split_transport_peripheral_event ev = {
+        .type = ZMK_SPLIT_TRANSPORT_PERIPHERAL_EVENT_TYPE_BATTERY_EVENT,
+        .data.battery_event.level = zmk_battery_state_of_charge(),
+    };
+    k_msgq_put(&event_q, &ev, K_NO_WAIT);
+#endif
+}
+
 static void set_connected(bool now_connected) {
     if (connected == now_connected) {
         return;
+    }
+
+    if (now_connected) {
+        queue_battery_level();
     }
 
     connected = now_connected;
@@ -198,6 +218,12 @@ static void ptx_done(bool acked, const uint8_t *ack, uint8_t ack_len) {
 }
 
 static void keepalive_work_cb(struct k_work *work) {
+    static uint32_t count;
+
+    if (++count % CONFIG_ZMK_SPLIT_ESB_BATTERY_RESEND_KEEPALIVES == 0) {
+        queue_battery_level();
+    }
+
     atomic_set(&keepalive_pending, 1);
     k_work_submit(&send_work);
     k_work_reschedule(&keepalive_work, K_MSEC(CONFIG_ZMK_SPLIT_ESB_KEEPALIVE_MS));

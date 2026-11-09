@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build Corne images in the ZMK build container, reusing the devcontainer's
-# Zephyr volumes read-only. Images go to build/corne_<side>.uf2, and
-# build/last records them for scripts/flash.sh.
+# Zephyr volumes read-only. Images go to build/corne_<side>.uf2, or
+# corne_<side>-custom.uf2 with extra CMake args (they stick in the cache).
 #   scripts/build.sh [left|right|all] [extra cmake args...]
 set -euo pipefail
 
@@ -22,9 +22,15 @@ esac
 # Miryoku layout choices, as in miryoku_zmk's build-acb-corne workflow
 cppflags="-DMIRYOKU_ALPHAS_COLEMAK;-DMIRYOKU_CLIPBOARD_MAC;-DMIRYOKU_EXTRA_QWERTY;-DMIRYOKU_TAP_COLEMAK"
 
+suffix=""
+if [[ $# -gt 0 ]]; then
+    suffix="-custom"
+fi
+
 mkdir -p "$here/build"
 for side in "${sides[@]}"; do
-    echo "== corne_$side"
+    name="corne_$side$suffix"
+    echo "== $name"
     docker run --rm \
         -v "$zmk_dir":/workspaces/zmk \
         -v zmk-zephyr:/workspaces/zmk/zephyr:ro \
@@ -34,14 +40,16 @@ for side in "${sides[@]}"; do
         -v "$here":/workspaces/zmk-split-esb \
         -w /workspaces/zmk/app \
         "$image" \
-        west build -p auto -b nice_nano//zmk -d "/workspaces/zmk-split-esb/build/corne_$side" -- \
+        west build -p auto -b nice_nano//zmk -d "/workspaces/zmk-split-esb/build/$name" -- \
             -DSHIELD="corne_$side nice_view_adapter nice_view" \
             -DZMK_CONFIG=/workspaces/zmk-config/config \
             -DZMK_EXTRA_MODULES=/workspaces/zmk-split-esb \
             -DEXTRA_CONF_FILE="/workspaces/zmk-split-esb/conf/corne_$side.conf" \
             -DDTS_EXTRA_CPPFLAGS="$cppflags" \
             "$@"
-    cp "$here/build/corne_$side/zephyr/zmk.uf2" "$here/build/corne_$side.uf2"
+    cp "$here/build/$name/zephyr/zmk.uf2" "$here/build/$name.uf2"
 done
 
-printf '%s\n' "${sides[@]}" > "$here/build/last"
+if [[ -z "$suffix" ]]; then
+    printf '%s\n' "${sides[@]}" > "$here/build/last"
+fi

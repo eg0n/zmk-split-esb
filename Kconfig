@@ -39,6 +39,14 @@ config ZMK_SPLIT_ESB_PTX
     depends on !ZMK_SPLIT_ROLE_CENTRAL && !BT_CTLR
     select CLOCK_CONTROL
 
+config ZMK_SPLIT_ESB_PTX_HFXO_HOLD_MS
+    int "Keep the crystal oscillator running this long after a packet (ms)"
+    depends on ZMK_SPLIT_ESB_PTX
+    default 20
+    help
+      Starting the oscillator adds up to ~1 ms to the first packet after a
+      pause. 0 keeps it running all the time.
+
 config ZMK_SPLIT_ESB_PERIPHERAL_ID
     int "Peripheral id, which is also its ESB pipe"
     depends on ZMK_SPLIT_ESB_PTX
@@ -84,6 +92,10 @@ config ZMK_SPLIT_ESB_KEEPALIVE_MS
     help
       Also bounds how long a command from the central waits for an idle
       peripheral, since commands ride on ACKs.
+
+config ZMK_SPLIT_ESB_BATTERY_RESEND_KEEPALIVES
+    int "Resend the battery level every this many keepalives"
+    default 60
 
 config ZMK_SPLIT_ESB_LINK_TIMEOUT_MS
     int "Time without packets before a link counts as lost (ms)"

@@ -5,7 +5,8 @@
 
 /* ESB transmitter for a peripheral that owns the radio (no BLE). SHORTS turn
  * the radio around for the ACK, and TIMER2 bounds the wait and spaces out
- * retransmissions. */
+ * retransmissions. The crystal oscillator (~250 uA) is requested per packet
+ * and released after ZMK_SPLIT_ESB_PTX_HFXO_HOLD_MS idle. */
 
 #include <errno.h>
 #include <string.h>
@@ -39,6 +40,7 @@ LOG_MODULE_DECLARE(zmk_split_esb, CONFIG_ZMK_SPLIT_ESB_LOG_LEVEL);
 
 enum ptx_state {
     PTX_STATE_IDLE,
+    PTX_STATE_WAIT_HF,
     PTX_STATE_TX,
     PTX_STATE_WAIT_ACK,
     PTX_STATE_RETRANSMIT_WAIT,
@@ -53,6 +55,14 @@ static uint8_t attempts;
 static uint32_t first_tx_cycles;
 
 static zmk_split_esb_ptx_done_cb_t done_cb;
+
+static struct onoff_manager *hf_mgr;
+static struct onoff_client hf_cli;
+static bool hf_requested;
+static bool hf_running;
+
+static void hf_release_work_cb(struct k_work *work);
+static K_WORK_DELAYABLE_DEFINE(hf_release_work, hf_release_work_cb);
 
 void zmk_split_esb_ptx_set_done_cb(zmk_split_esb_ptx_done_cb_t cb) { done_cb = cb; }
 
@@ -83,6 +93,10 @@ static void start_tx(void) {
 static void finish(bool acked) {
     state = PTX_STATE_IDLE;
     pid = (pid + 1) & 0x3;
+
+    if (CONFIG_ZMK_SPLIT_ESB_PTX_HFXO_HOLD_MS > 0) {
+        k_work_reschedule(&hf_release_work, K_MSEC(CONFIG_ZMK_SPLIT_ESB_PTX_HFXO_HOLD_MS));
+    }
 
     uint8_t ack_len = acked ? MIN(ESB_PHY_LEN(ack_buf), ESB_PHY_MAX_PAYLOAD) : 0;
 
@@ -157,6 +171,59 @@ static void timer_isr(const void *arg) {
     }
 }
 
+/* May run in the clock ISR, or inside onoff_request() if already running. */
+static void hf_started(struct onoff_manager *mgr, struct onoff_client *cli, uint32_t mgr_state,
+                       int res) {
+    unsigned int key = irq_lock();
+
+    if (res < 0) {
+        hf_requested = false;
+        if (state == PTX_STATE_WAIT_HF) {
+            finish(false);
+        }
+    } else {
+        hf_running = true;
+        if (state == PTX_STATE_WAIT_HF) {
+            start_tx();
+        }
+    }
+
+    irq_unlock(key);
+}
+
+/* Call with interrupts locked. */
+static void hf_request(void) {
+    if (hf_requested) {
+        return;
+    }
+
+    hf_requested = true;
+    sys_notify_init_callback(&hf_cli.notify, hf_started);
+    int err = onoff_request(hf_mgr, &hf_cli);
+    if (err < 0) {
+        hf_requested = false;
+        if (state == PTX_STATE_WAIT_HF) {
+            finish(false);
+        }
+    }
+}
+
+static void hf_release_work_cb(struct k_work *work) {
+    unsigned int key = irq_lock();
+
+    if (state != PTX_STATE_IDLE || !hf_running) {
+        irq_unlock(key);
+        return;
+    }
+
+    hf_running = false;
+    hf_requested = false;
+    irq_unlock(key);
+
+    /* A send arriving now makes a fresh request, which onoff counts. */
+    onoff_release(hf_mgr);
+}
+
 int zmk_split_esb_ptx_send(const uint8_t *data, uint8_t len) {
     if (len > ESB_PHY_MAX_PAYLOAD) {
         return -EINVAL;
@@ -174,27 +241,20 @@ int zmk_split_esb_ptx_send(const uint8_t *data, uint8_t len) {
     attempts = 0;
     first_tx_cycles = k_cycle_get_32();
     atomic_inc(&zmk_split_esb_stats.tx_sent);
-    start_tx();
+
+    if (hf_running) {
+        start_tx();
+    } else {
+        state = PTX_STATE_WAIT_HF;
+        hf_request();
+    }
 
     irq_unlock(key);
     return 0;
 }
 
 static int ptx_init(void) {
-    /* The radio needs the crystal oscillator. Keep it running for now;
-     * releasing it between bursts is a later power optimisation. */
-    struct onoff_manager *hf = z_nrf_clock_control_get_onoff(CLOCK_CONTROL_NRF_SUBSYS_HF);
-    struct onoff_client cli;
-    int res;
-
-    sys_notify_init_spinwait(&cli.notify);
-    int err = onoff_request(hf, &cli);
-    if (err < 0) {
-        LOG_ERR("HFXO request failed (%d)", err);
-        return err;
-    }
-    while (sys_notify_fetch_result(&cli.notify, &res) == -EAGAIN) {
-    }
+    hf_mgr = z_nrf_clock_control_get_onoff(CLOCK_CONTROL_NRF_SUBSYS_HF);
 
     nrf_timer_mode_set(PTX_TIMER, NRF_TIMER_MODE_TIMER);
     nrf_timer_bit_width_set(PTX_TIMER, NRF_TIMER_BIT_WIDTH_32);

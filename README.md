@@ -74,7 +74,14 @@ scripts/build.sh left          # or right, or all; extra args go to CMake
 scripts/flash.sh               # flashes what was just built, one half at a time
 ```
 
-Per-half Kconfig lives in `conf/corne_<side>.conf`.
+Per-half Kconfig lives in `conf/corne_<side>.conf`. Extra CMake arguments
+build into a separate directory and image, so test options don't leak into
+normal builds:
+
+```sh
+scripts/build.sh left -DCONFIG_ZMK_SPLIT_ESB_SELFTEST_ASSERT=y
+scripts/flash.sh build/corne_left-custom.uf2
+```
 
 ## License
 

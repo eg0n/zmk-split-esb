@@ -28,6 +28,9 @@
 #if IS_ENABLED(CONFIG_ZMK_USB)
 #include <zmk/usb.h>
 #endif
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING)
+#include <zmk/split/central.h>
+#endif
 #if IS_ENABLED(CONFIG_ZMK_SPLIT_BLE) && !IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
 #include <zmk/split/bluetooth/peripheral.h>
 #endif
@@ -159,6 +162,16 @@ static void fill_lines(void) {
         n++;
 #endif
     }
+
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING)
+    uint8_t peripheral_level;
+    if (zmk_split_central_get_peripheral_battery_level(0, &peripheral_level) == 0 &&
+        peripheral_level > 0) {
+        snprintf(lines[n++], LINE_LEN + 1, "RBT %3u%%", peripheral_level);
+    } else {
+        snprintf(lines[n++], LINE_LEN + 1, "RBT   --");
+    }
+#endif
 
     fmt_count(lines[n++], "UP", (uint32_t)(k_uptime_get() / 1000));
     snprintf(lines[n++], LINE_LEN + 1, "RST %s", reset_cause_str(reset_cause));
