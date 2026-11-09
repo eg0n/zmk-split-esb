@@ -28,6 +28,26 @@ none lost) and phase 0 are verified on a Corne.
 | 3 | Idle duty-cycling, channel hopping, ACK-payload commands |
 | 4 | Dongle (Totem + Prospector): builds, untested |
 
+## Wire format
+
+Packets use the standard ESB on-air format (2 Mbit/s, dynamic payload length,
+16-bit CRC); see `src/phy/esb_phy.h`. Payloads are at most 32 bytes.
+
+Peripheral to central: `[seq][cmd_ack][session][type][data]...[type][data]`
+
+- `seq` increments per new packet. A packet resent after its retransmissions
+  ran out keeps its seq, so the central can drop it if the first copy arrived.
+- `cmd_ack` is the seq of the last command received, so the central knows
+  when to stage the next one.
+- `session` is random and non-zero, picked at boot. A change means the
+  peripheral restarted, possibly faster than the link timeout, so whatever it
+  had pressed is released.
+- Each event is a `zmk_split_transport_peripheral_event_type` byte followed
+  by that type's data. A packet with no events is a keepalive.
+
+Central to peripheral, as an ACK payload: `[seq][type][data]`, one
+`zmk_split_transport_central_command`.
+
 ## Known issues
 
 - After a UF2 flash, the peripheral needs one extra reset before it works.
@@ -45,7 +65,7 @@ the nice!view shows, top to bottom:
 | `WIN` | `TX` | receive windows started / packets sent |
 | `PRE` | `ACK` | windows preempted by BLE / packets acknowledged |
 | `RX` | `RTX` | packets received / retransmissions |
-| `CRC` | `BAD` | CRC failures / packets given up on |
+| `CRC` | `BAD` | CRC failures / packets that used up their retransmissions (then resent, not lost) |
 | `ACK` | `HOP` | ACK payloads sent / channel hops |
 | `CH` | `CH` | current RF channel |
 | `AGE` | `RTT` | ms since the peripheral was last heard / last round trip (µs) |
