@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Build ESB images in the ZMK build container, reusing the devcontainer's
 # Zephyr volumes read-only; the Totem also needs its modules in ZMK_MODULES_DIR.
-#   scripts/build.sh [corne|totem] [left|right|dongle|all] [extra cmake args...]
-# Images go to build/<kb>_<part>.uf2, or -custom.uf2 with extra CMake args.
+#   scripts/build.sh [corne|totem] [<part>|all] [extra cmake args...]
+# Images go to build/<kb>_<part>.uf2, or -custom.uf2 with extra CMake args. Boards with
+# Nordic's nRF5 bootloader get a .hex instead, and a DFU .zip if nrfutil is installed.
 set -euo pipefail
 
 here=$(cd "$(dirname "$0")/.." && pwd)
@@ -31,26 +32,39 @@ case "$keyboard" in
     totem)
         board=xiao_ble//zmk
         all=(left right dongle)
+        # A Nordic nRF52840 Dongle (or a clone) as the dongle, and settings resets
+        more=(nrfdongle reset nrfdongle_reset)
         ;;
 esac
 
 case "$target" in
     all) parts=("${all[@]}") ;;
     *)
-        if [[ ! " ${all[*]} " =~ " $target " ]]; then
-            echo "usage: $0 [corne|totem] [${all[*]// /|}|all] [cmake args...]" >&2
+        if [[ ! " ${all[*]} ${more[*]-} " =~ " $target " ]]; then
+            echo "usage: $0 [corne|totem] [${all[*]// /|}${more:+|${more[*]// /|}}|all] [cmake args...]" >&2
             exit 2
         fi
         parts=("$target")
         ;;
 esac
 
-# Sets shield, modules (space-separated container paths), cppflags and
-# extra (CMake arguments) for one part.
+# Sets board, shield, modules (space-separated container paths), cppflags, conf
+# (the conf/ files' part name, empty for none) and extra (CMake arguments) for one part.
 part_settings() {
     local part=$1
+    board=$keyboard_board
+    conf=$part
     modules=""
     extra=()
+    case "$part" in
+        reset | nrfdongle_reset)
+            [[ "$part" == nrfdongle_reset ]] && board=nrf52840dongle//zmk
+            shield=settings_reset
+            cppflags=""
+            conf=""
+            return
+            ;;
+    esac
     case "$keyboard" in
         corne)
             shield="corne_$part nice_view_adapter nice_view"
@@ -64,6 +78,11 @@ part_settings() {
                 modules="$modules /workspaces/zmk-modules/prospector-zmk-module"
                 cppflags="$cppflags;-DBACKLIGHT_BEHAVIORS"
                 extra=("-DCONFIG_PROSPECTOR_STATUS_SCREEN_$(echo "$layout" | tr "[:lower:]" "[:upper:]")=y")
+            elif [[ "$part" == nrfdongle ]]; then
+                # No screen: the Prospector adapter only fits a XIAO.
+                board=nrf52840dongle//zmk
+                shield=totem_dongle
+                conf=dongle
             else
                 shield="totem_$part rgbled_adapter"
             fi
@@ -76,15 +95,18 @@ if [[ $# -gt 0 ]]; then
     suffix="-custom"
 fi
 
+keyboard_board=$board
 mkdir -p "$here/build"
 built=()
 for part in "${parts[@]}"; do
     name="${keyboard}_$part$suffix"
     echo "== $name"
     part_settings "$part"
-    overlay="$here/conf/${keyboard}_$part.overlay"
-    if [[ -f "$overlay" ]]; then
-        extra+=("-DEXTRA_DTC_OVERLAY_FILE=/workspaces/zmk-split-esb/conf/${keyboard}_$part.overlay")
+    if [[ -n "$conf" ]]; then
+        extra+=("-DEXTRA_CONF_FILE=/workspaces/zmk-split-esb/conf/${keyboard}_$conf.conf")
+        if [[ -f "$here/conf/${keyboard}_$conf.overlay" ]]; then
+            extra+=("-DEXTRA_DTC_OVERLAY_FILE=/workspaces/zmk-split-esb/conf/${keyboard}_$conf.overlay")
+        fi
     fi
 
     # Zephyr misses edits to this module's Kconfig in an existing build dir,
@@ -116,12 +138,22 @@ for part in "${parts[@]}"; do
             -DSHIELD="$shield" \
             -DZMK_CONFIG=/workspaces/zmk-config/config \
             -DZMK_EXTRA_MODULES="$module_list" \
-            -DEXTRA_CONF_FILE="/workspaces/zmk-split-esb/conf/${keyboard}_$part.conf" \
             -DDTS_EXTRA_CPPFLAGS="$cppflags" \
             ${extra[@]+"${extra[@]}"} \
             "$@"
     echo "$kconfig_hash" > "$stamp"
-    cp "$here/build/$name/zephyr/zmk.uf2" "$here/build/$name.uf2"
+    out="$here/build/$name/zephyr"
+    if [[ -f "$out/zmk.uf2" ]]; then
+        cp "$out/zmk.uf2" "$here/build/$name.uf2"
+    else
+        cp "$out/zmk.hex" "$here/build/$name.hex"
+        if command -v nrfutil >/dev/null && nrfutil nrf5sdk-tools --help >/dev/null 2>&1; then
+            nrfutil nrf5sdk-tools pkg generate --hw-version 52 --sd-req 0x00 --application-version 1 \
+                --application "$here/build/$name.hex" "$here/build/$name.zip" >/dev/null
+        else
+            echo "   no DFU package: install nrfutil and run 'nrfutil install nrf5sdk-tools'" >&2
+        fi
+    fi
     built+=("$name")
 done
 

@@ -104,6 +104,14 @@ scripts/build.sh totem all           # totem: left, right, dongle
 scripts/flash.sh                     # flashes what was just built, one part at a time
 ```
 
+The Totem also builds `nrfdongle`, the dongle on a Nordic nRF52840 Dongle or a
+clone (no screen), and the settings resets `reset` (XIAO) and
+`nrfdongle_reset`. That dongle keeps Nordic's bootloader, so it gets a `.hex`
+and, with [nRF Util](https://www.nordicsemi.com/Products/Development-tools/nRF-Util)
+and `nrfutil install nrf5sdk-tools`, a DFU `.zip` that `scripts/flash.sh`
+sends through the bootloader. Clones without DC/DC inductors (Raytac's) need
+the LDO overlay in miryoku_zmk's `config/nrf52840dongle.overlay`.
+
 Per-part Kconfig lives in `conf/<keyboard>_<part>.conf`. The Totem needs
 these checked out in `ZMK_MODULES_DIR`, and builds whatever branch each is on:
 
