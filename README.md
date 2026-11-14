@@ -112,6 +112,16 @@ and `nrfutil install nrf5sdk-tools`, a DFU `.zip` that `scripts/flash.sh`
 sends through the bootloader. Clones without DC/DC inductors (Raytac's) need
 the LDO overlay in miryoku_zmk's `config/nrf52840dongle.overlay`.
 
+`nrfdongle` also reports the keyboard's state to the
+[KeyBeacon](https://github.com/eg0n/keybeacon) Mac app over USB
+(`conf/totem_nrfdongle.conf`, module `zmk-keybeacon` on branch
+`feat/dongle-usb`). It needs a ZMK with rolling WPM and the caps-word event,
+branch `totem-esb` of [eg0n/zmk](https://github.com/eg0n/zmk):
+
+```sh
+ZMK_DIR=~/src/zmk-totem-esb scripts/build.sh totem nrfdongle
+```
+
 Per-part Kconfig lives in `conf/<keyboard>_<part>.conf`. The Totem needs
 these checked out in `ZMK_MODULES_DIR`, and builds whatever branch each is on:
 

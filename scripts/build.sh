@@ -49,11 +49,13 @@ case "$target" in
 esac
 
 # Sets board, shield, modules (space-separated container paths), cppflags, conf
-# (the conf/ files' part name, empty for none) and extra (CMake arguments) for one part.
+# (the conf/ files' part name, empty for none), more_conf (a further conf/ file's
+# part name) and extra (CMake arguments) for one part.
 part_settings() {
     local part=$1
     board=$keyboard_board
     conf=$part
+    more_conf=""
     modules=""
     extra=()
     case "$part" in
@@ -83,6 +85,8 @@ part_settings() {
                 board=nrf52840dongle//zmk
                 shield=totem_dongle
                 conf=dongle
+                more_conf=nrfdongle
+                modules="$modules /workspaces/zmk-modules/zmk-keybeacon"
             else
                 shield="totem_$part rgbled_adapter"
             fi
@@ -103,7 +107,11 @@ for part in "${parts[@]}"; do
     echo "== $name"
     part_settings "$part"
     if [[ -n "$conf" ]]; then
-        extra+=("-DEXTRA_CONF_FILE=/workspaces/zmk-split-esb/conf/${keyboard}_$conf.conf")
+        conf_files="/workspaces/zmk-split-esb/conf/${keyboard}_$conf.conf"
+        if [[ -n "$more_conf" ]]; then
+            conf_files="$conf_files;/workspaces/zmk-split-esb/conf/${keyboard}_$more_conf.conf"
+        fi
+        extra+=("-DEXTRA_CONF_FILE=$conf_files")
         if [[ -f "$here/conf/${keyboard}_$conf.overlay" ]]; then
             extra+=("-DEXTRA_DTC_OVERLAY_FILE=/workspaces/zmk-split-esb/conf/${keyboard}_$conf.overlay")
         fi
