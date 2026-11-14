@@ -122,10 +122,10 @@ branch `int/totem-esb` of [eg0n/zmk](https://github.com/eg0n/zmk):
 ZMK_DIR=~/src/zmk-totem-esb scripts/build.sh totem nrfdongle
 ```
 
-Per-part Kconfig lives in `conf/<keyboard>_<part>.conf`. The Totem needs
-these checked out in `ZMK_MODULES_DIR`, and builds whatever branch each is on:
+Per-part Kconfig lives in `conf/<keyboard>_<part>.conf`. The Totem's shield is
+in miryoku_zmk (`config/boards/shields/totem`); it also needs these checked out
+in `ZMK_MODULES_DIR`, and builds whatever branch each is on:
 
-- `zmk-totem-dongle`
 - `zmk-rgbled-widget`, branch `feat/esb-split` of
   [eg0n/zmk-rgbled-widget](https://github.com/eg0n/zmk-rgbled-widget) for the
   link-status blink on ESB peripherals

@@ -73,7 +73,7 @@ part_settings() {
             cppflags="$miryoku"
             ;;
         totem)
-            modules="/workspaces/zmk-modules/zmk-totem-dongle /workspaces/zmk-modules/zmk-rgbled-widget"
+            modules="/workspaces/zmk-modules/zmk-rgbled-widget"
             cppflags="$miryoku;-DMIRYOKU_KLUDGE_GLOBALSHIFTFUNCTIONS;-DRGBLED_WIDGET_BEHAVIORS"
             if [[ "$part" == dongle ]]; then
                 shield="totem_dongle prospector_adapter"
