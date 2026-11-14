@@ -116,7 +116,7 @@ the LDO overlay in miryoku_zmk's `config/nrf52840dongle.overlay`.
 [KeyBeacon](https://github.com/eg0n/keybeacon) Mac app over USB
 (`conf/totem_nrfdongle.conf`, module `zmk-keybeacon` on branch
 `feat/dongle-usb`). It needs a ZMK with rolling WPM and the caps-word event,
-branch `totem-esb` of [eg0n/zmk](https://github.com/eg0n/zmk):
+branch `int/totem-esb` of [eg0n/zmk](https://github.com/eg0n/zmk):
 
 ```sh
 ZMK_DIR=~/src/zmk-totem-esb scripts/build.sh totem nrfdongle
