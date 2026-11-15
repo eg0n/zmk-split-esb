@@ -25,6 +25,7 @@ struct zmk_split_esb_stats zmk_split_esb_stats;
 static __noinit struct {
     uint32_t magic;
     uint32_t magic_inv;
+    uint32_t unreported; /* set by an assert, cleared once the next boot has read it */
     struct zmk_split_esb_assert_record rec;
 } retained;
 
@@ -50,6 +51,7 @@ void bt_ctlr_assert_handle(char *file, uint32_t line) {
     retained.rec.line = line;
     strncpy(retained.rec.file, base, sizeof(retained.rec.file) - 1);
     retained.rec.file[sizeof(retained.rec.file) - 1] = '\0';
+    retained.unreported = 1;
     retained.magic = ASSERT_RECORD_MAGIC;
     retained.magic_inv = ~ASSERT_RECORD_MAGIC;
 
@@ -63,13 +65,15 @@ static K_WORK_DELAYABLE_DEFINE(selftest_assert_work, selftest_assert_cb);
 #endif
 
 static int assert_record_init(void) {
-    if (retained_valid()) {
+    if (!retained_valid()) {
+        memset(&retained, 0, sizeof(retained));
+    } else if (retained.unreported) {
+        /* Reported for this boot only; the count carries on through later resets. */
+        retained.unreported = 0;
         last_assert = retained.rec;
         have_last_assert = true;
         LOG_WRN("Controller assert before reboot: %s:%u (%u total)", last_assert.file,
                 last_assert.line, last_assert.count);
-    } else {
-        memset(&retained, 0, sizeof(retained));
     }
 
 #if IS_ENABLED(CONFIG_ZMK_SPLIT_ESB_SELFTEST_ASSERT)

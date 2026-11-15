@@ -12,6 +12,8 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/init.h>
+#include <zephyr/devicetree.h>
+#include <zephyr/drivers/entropy.h>
 #include <zephyr/logging/log.h>
 #include <hal/nrf_rng.h>
 
@@ -323,21 +325,36 @@ static const struct zmk_split_transport_peripheral_api api = {
     .set_status_callback = set_status_callback,
 };
 
-/* One byte from the hardware RNG; BLE is off, so nothing else is using it. */
-static uint8_t random_session(void) {
-    uint8_t value;
+/* One byte from the hardware RNG. An entropy driver owns the RNG and its
+ * events, so ask it when there is one; without it (BLE is off) nothing else
+ * uses the RNG, and it is read directly. */
+static uint8_t random_byte(void) {
+    uint8_t value = 0;
 
+#if IS_ENABLED(CONFIG_ENTROPY_GENERATOR) && DT_HAS_CHOSEN(zephyr_entropy)
+    entropy_get_entropy(DEVICE_DT_GET(DT_CHOSEN(zephyr_entropy)), &value, sizeof(value));
+#else
     nrf_rng_event_clear(NRF_RNG, NRF_RNG_EVENT_VALRDY);
     nrf_rng_task_trigger(NRF_RNG, NRF_RNG_TASK_START);
-    do {
-        while (!nrf_rng_event_check(NRF_RNG, NRF_RNG_EVENT_VALRDY)) {
-        }
-        nrf_rng_event_clear(NRF_RNG, NRF_RNG_EVENT_VALRDY);
-        value = nrf_rng_random_value_get(NRF_RNG);
-    } while (value == 0);
+    while (!nrf_rng_event_check(NRF_RNG, NRF_RNG_EVENT_VALRDY)) {
+    }
+    nrf_rng_event_clear(NRF_RNG, NRF_RNG_EVENT_VALRDY);
+    value = nrf_rng_random_value_get(NRF_RNG);
     nrf_rng_task_trigger(NRF_RNG, NRF_RNG_TASK_STOP);
+#endif
 
     return value;
+}
+
+/* Never 0, which the central takes for "never heard". */
+static uint8_t random_session(void) {
+    for (int i = 0; i < 16; i++) {
+        uint8_t value = random_byte();
+        if (value) {
+            return value;
+        }
+    }
+    return (uint8_t)k_cycle_get_32() | 1;
 }
 
 static int esb_peripheral_init(void) {

@@ -12,6 +12,7 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/init.h>
+#include <zephyr/random/random.h>
 #include <zephyr/sys/atomic.h>
 #include <zephyr/logging/log.h>
 
@@ -129,19 +130,24 @@ static void stage_next_command(uint8_t source) {
     k_msgq_get(&p->cmd_q, &item, K_NO_WAIT);
 }
 
+/* pressed holds the presses ZMK was given and has not seen released, so that a
+ * release is only ever passed on for one of those. */
 static void deliver(uint8_t source, struct zmk_split_transport_peripheral_event ev) {
+    if (!is_enabled) {
+        return;
+    }
+
     if (ev.type == ZMK_SPLIT_TRANSPORT_PERIPHERAL_EVENT_TYPE_KEY_POSITION_EVENT &&
         ev.data.key_position_event.position < MAX_POSITIONS) {
+        uint32_t position = ev.data.key_position_event.position;
         if (ev.data.key_position_event.pressed) {
-            atomic_set_bit(peripherals[source].pressed, ev.data.key_position_event.position);
-        } else {
-            atomic_clear_bit(peripherals[source].pressed, ev.data.key_position_event.position);
+            atomic_set_bit(peripherals[source].pressed, position);
+        } else if (!atomic_test_and_clear_bit(peripherals[source].pressed, position)) {
+            return;
         }
     }
 
-    if (is_enabled) {
-        zmk_split_transport_central_peripheral_event_handler(&esb_central, source, ev);
-    }
+    zmk_split_transport_central_peripheral_event_handler(&esb_central, source, ev);
 }
 
 static void release_keys(uint8_t source);
@@ -296,6 +302,12 @@ static int get_available_source_ids(uint8_t *sources) {
 }
 
 static int set_enabled(bool enabled) {
+    if (!enabled) {
+        /* Nothing more is delivered once disabled, so let go of what is held. */
+        for (int i = 0; i < PERIPHERAL_COUNT; i++) {
+            release_keys(i);
+        }
+    }
     is_enabled = enabled;
     return 0;
 }
@@ -333,6 +345,9 @@ static int esb_central_init(void) {
     for (int i = 0; i < PERIPHERAL_COUNT; i++) {
         k_msgq_init(&peripherals[i].cmd_q, peripherals[i].cmd_buf, sizeof(struct cmd_item),
                     CONFIG_ZMK_SPLIT_ESB_CMD_QUEUE_SIZE);
+        /* A peripheral ignores a command whose seq matches the last one it took, and it
+         * outlives our reboots: start somewhere random, not at the same seq every boot. */
+        peripherals[i].cmd_seq = sys_rand8_get();
     }
     zmk_split_esb_prx_set_rx_cb(on_rx);
     k_work_schedule(&link_check_work, K_MSEC(LINK_CHECK_MS));

@@ -53,6 +53,8 @@ BUILD_ASSERT(CONFIG_BT_CTLR_USER_TICKER_ID_RANGE >= 2, "The receiver needs two t
 
 #define PRX_PERIOD_US (CONFIG_ZMK_SPLIT_ESB_PRX_PERIOD_MS * 1000U)
 #define PRX_WINDOW_US (CONFIG_ZMK_SPLIT_ESB_PRX_LOW_POWER_WINDOW_MS * 1000U)
+BUILD_ASSERT(PRX_WINDOW_US < PRX_PERIOD_US,
+             "The low-power window must be shorter than the receiver period");
 
 struct lll_prx {
     struct lll_hdr hdr;
