@@ -4,8 +4,9 @@
  */
 
 /* ZMK split central transport over the hosted ESB receiver. Peripheral id n
- * uses pipe n and is ZMK source n - 1. Commands are staged one at a time per
- * pipe as ACK payload, and released once the peripheral echoes their seq. */
+ * uses pipe n and is ZMK source n - 1. Each peripheral has its own command
+ * queue; commands are staged one at a time per pipe as ACK payload, and
+ * released once the peripheral echoes their seq. */
 
 #include <string.h>
 
@@ -43,12 +44,13 @@ struct rx_item {
 K_MSGQ_DEFINE(rx_q, sizeof(struct rx_item), CONFIG_ZMK_SPLIT_ESB_RX_QUEUE_SIZE, 4);
 
 struct cmd_item {
-    uint8_t pipe;
     uint8_t len;
     uint8_t data[ESB_PHY_MAX_PAYLOAD];
 };
 
-K_MSGQ_DEFINE(cmd_q, sizeof(struct cmd_item), CONFIG_ZMK_SPLIT_ESB_CMD_QUEUE_SIZE, 4);
+/* Guards the command queues, cmd_seq and staged_seq: commands come from any
+ * thread, their echoes from the system workqueue. */
+static K_MUTEX_DEFINE(cmd_lock);
 
 static struct peripheral {
     int64_t last_heard_ms;
@@ -58,6 +60,8 @@ static struct peripheral {
     uint8_t cmd_seq;
     uint8_t staged_seq; /* 0: nothing staged */
     uint8_t session;    /* 0: never heard */
+    struct k_msgq cmd_q;
+    char cmd_buf[CONFIG_ZMK_SPLIT_ESB_CMD_QUEUE_SIZE * sizeof(struct cmd_item)];
     ATOMIC_DEFINE(pressed, MAX_POSITIONS);
 } peripherals[PERIPHERAL_COUNT];
 
@@ -107,20 +111,22 @@ static void on_rx(uint8_t pipe, const uint8_t *data, uint8_t len) {
     }
 }
 
-static void stage_next_command(void) {
+/* Call with cmd_lock held. A command leaves its queue only once it is staged. */
+static void stage_next_command(uint8_t source) {
+    struct peripheral *p = &peripherals[source];
     struct cmd_item item;
 
-    while (k_msgq_peek(&cmd_q, &item) == 0) {
-        struct peripheral *p = &peripherals[item.pipe - 1];
-        if (p->staged_seq) {
-            return;
-        }
-
-        if (zmk_split_esb_prx_stage_ack(item.pipe, item.data, item.len) == 0) {
-            p->staged_seq = item.data[0];
-        }
-        k_msgq_get(&cmd_q, &item, K_NO_WAIT);
+    if (p->staged_seq || k_msgq_peek(&p->cmd_q, &item) != 0) {
+        return;
     }
+
+    int err = zmk_split_esb_prx_stage_ack(source + 1, item.data, item.len);
+    if (err) {
+        LOG_WRN("Staging a command for peripheral %d failed (%d)", source, err);
+        return;
+    }
+    p->staged_seq = item.data[0];
+    k_msgq_get(&p->cmd_q, &item, K_NO_WAIT);
 }
 
 static void deliver(uint8_t source, struct zmk_split_transport_peripheral_event ev) {
@@ -168,11 +174,13 @@ static void process(const struct rx_item *item) {
         p->seq_valid = false;
     }
 
+    k_mutex_lock(&cmd_lock, K_FOREVER);
     if (p->staged_seq && item->data[1] == p->staged_seq) {
         zmk_split_esb_prx_clear_ack(item->pipe);
         p->staged_seq = 0;
-        stage_next_command();
+        stage_next_command(source);
     }
+    k_mutex_unlock(&cmd_lock);
 
     /* A packet resent after running out of retransmissions keeps its seq. */
     if (p->seq_valid && item->data[0] == p->last_seq) {
@@ -250,24 +258,30 @@ static int send_command(uint8_t source, struct zmk_split_transport_central_comma
     }
 
     struct peripheral *p = &peripherals[source];
-    if (++p->cmd_seq == 0) {
-        p->cmd_seq = 1;
-    }
-
-    struct cmd_item item = {.pipe = source + 1, .len = ESB_FRAME_COMMAND_HEADER + 1 + size};
+    struct cmd_item item = {.len = ESB_FRAME_COMMAND_HEADER + 1 + size};
     BUILD_ASSERT(ESB_FRAME_COMMAND_HEADER + 1 + ESB_FRAME_INVOKE_BEHAVIOR_SIZE <= ESB_PHY_MAX_PAYLOAD,
                  "Commands must fit one ACK payload");
-    item.data[0] = p->cmd_seq;
     item.data[1] = cmd.type;
     memcpy(&item.data[2], &cmd.data, size);
 
-    int err = k_msgq_put(&cmd_q, &item, K_NO_WAIT);
-    if (err) {
-        LOG_WRN("ESB command queue full, dropping command type %d", cmd.type);
-        return -ENOSPC;
+    k_mutex_lock(&cmd_lock, K_FOREVER);
+    if (++p->cmd_seq == 0) {
+        p->cmd_seq = 1;
+    }
+    item.data[0] = p->cmd_seq;
+
+    /* A peripheral that is away fills its queue: keep the newest commands, so
+     * the state it comes back to (the indicators, say) is the current one. */
+    if (k_msgq_put(&p->cmd_q, &item, K_NO_WAIT) != 0) {
+        struct cmd_item oldest;
+        k_msgq_get(&p->cmd_q, &oldest, K_NO_WAIT);
+        LOG_WRN("Peripheral %d command queue full, dropping command type %d", source,
+                oldest.data[1]);
+        k_msgq_put(&p->cmd_q, &item, K_NO_WAIT);
     }
 
-    stage_next_command();
+    stage_next_command(source);
+    k_mutex_unlock(&cmd_lock);
     return 0;
 }
 
@@ -316,6 +330,10 @@ static const struct zmk_split_transport_central_api api = {
 };
 
 static int esb_central_init(void) {
+    for (int i = 0; i < PERIPHERAL_COUNT; i++) {
+        k_msgq_init(&peripherals[i].cmd_q, peripherals[i].cmd_buf, sizeof(struct cmd_item),
+                    CONFIG_ZMK_SPLIT_ESB_CMD_QUEUE_SIZE);
+    }
     zmk_split_esb_prx_set_rx_cb(on_rx);
     k_work_schedule(&link_check_work, K_MSEC(LINK_CHECK_MS));
     return 0;

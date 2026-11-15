@@ -134,8 +134,12 @@ config ZMK_SPLIT_ESB_RX_QUEUE_SIZE
     default 32
 
 config ZMK_SPLIT_ESB_CMD_QUEUE_SIZE
-    int "Central command queue length"
+    int "Central command queue length, per peripheral"
+    range 1 64
     default 8
+    help
+      Commands waiting for one peripheral. When a peripheral is away for
+      long enough to fill its queue, the oldest command is dropped.
 
 endif # ZMK_SPLIT_ESB_TRANSPORT
 
