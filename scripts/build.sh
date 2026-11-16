@@ -4,6 +4,7 @@
 #   scripts/build.sh [corne|totem] [<part>|all] [extra cmake args...]
 # Images go to build/<kb>_<part>.uf2, or -custom.uf2 with extra CMake args. Boards with
 # Nordic's nRF5 bootloader get a .hex instead, and a DFU .zip if nrfutil is installed.
+# CORNE_SCREEN=debug builds the Corne with the ESB debug screen (corne_<part>-debug).
 set -euo pipefail
 
 here=$(cd "$(dirname "$0")/.." && pwd)
@@ -12,6 +13,12 @@ config_dir=${ZMK_CONFIG_DIR:-$HOME/src/miryoku_zmk}
 modules_dir=${ZMK_MODULES_DIR:-$HOME/src/zmk-modules}
 image=${ZMK_BUILD_IMAGE:-zmkfirmware/zmk-build-arm:stable}
 layout=${PROSPECTOR_LAYOUT:-operator}
+# The Corne's nice!views: gem (nice-view-gem) or debug (the ESB debug screen).
+screen=${CORNE_SCREEN:-gem}
+case "$screen" in
+    gem | debug) ;;
+    *) echo "CORNE_SCREEN must be gem or debug" >&2; exit 2 ;;
+esac
 
 keyboard=corne
 case "${1:-}" in
@@ -69,8 +76,14 @@ part_settings() {
     esac
     case "$keyboard" in
         corne)
-            shield="corne_$part nice_view_adapter nice_view"
             cppflags="$miryoku"
+            more_conf=$screen
+            if [[ "$screen" == debug ]]; then
+                shield="corne_$part nice_view_adapter nice_view"
+            else
+                shield="corne_$part nice_view_adapter nice_view_gem"
+                modules="/workspaces/zmk-modules/nice-view-gem"
+            fi
             ;;
         totem)
             modules="/workspaces/zmk-modules/zmk-rgbled-widget"
@@ -104,6 +117,10 @@ mkdir -p "$here/build"
 built=()
 for part in "${parts[@]}"; do
     name="${keyboard}_$part$suffix"
+    # Debug-screen images don't replace the everyday ones.
+    if [[ "$keyboard" == corne && "$screen" == debug ]]; then
+        name="${keyboard}_$part-debug$suffix"
+    fi
     echo "== $name"
     part_settings "$part"
     if [[ -n "$conf" ]]; then

@@ -122,6 +122,17 @@ branch `int/totem-esb` of [eg0n/zmk](https://github.com/eg0n/zmk):
 ZMK_DIR=~/src/zmk-totem-esb scripts/build.sh totem nrfdongle
 ```
 
+The Corne's nice!views run [nice-view-gem](https://github.com/M165437/nice-view-gem)
+(`conf/corne_gem.conf`), from `nice-view-gem` in `ZMK_MODULES_DIR` on branch
+`feat/esb-split` of [eg0n/nice-view-gem](https://github.com/eg0n/nice-view-gem),
+which adds the right half's link and battery to the left screen.
+`CORNE_SCREEN=debug` builds the [debug screen](#debug-screen) instead
+(`conf/corne_debug.conf`), as `corne_left-debug` and `corne_right-debug`:
+
+```sh
+CORNE_SCREEN=debug scripts/build.sh all
+```
+
 Per-part Kconfig lives in `conf/<keyboard>_<part>.conf`. The Totem's shield is
 in miryoku_zmk (`config/boards/shields/totem`); it also needs these checked out
 in `ZMK_MODULES_DIR`, and builds whatever branch each is on:
