@@ -59,8 +59,9 @@ static struct peripheral {
     bool seq_valid;
     uint8_t last_seq;
     uint8_t cmd_seq;
-    uint8_t staged_seq; /* 0: nothing staged */
-    uint8_t session;    /* 0: never heard */
+    uint8_t staged_seq;  /* 0: nothing staged */
+    uint8_t staged_type; /* the staged command's type */
+    uint8_t session;     /* 0: never heard */
     struct k_msgq cmd_q;
     char cmd_buf[CONFIG_ZMK_SPLIT_ESB_CMD_QUEUE_SIZE * sizeof(struct cmd_item)];
     ATOMIC_DEFINE(pressed, MAX_POSITIONS);
@@ -127,7 +128,30 @@ static void stage_next_command(uint8_t source) {
         return;
     }
     p->staged_seq = item.data[0];
+    p->staged_type = item.data[1];
     k_msgq_get(&p->cmd_q, &item, K_NO_WAIT);
+}
+
+/* A behavior acts when it is invoked, so one queued for a peripheral that is away is stale by
+ * the time it is back: drop those, as BLE split does, and keep the rest in order. Call with
+ * cmd_lock held. */
+static void drop_queued_behaviors(uint8_t source) {
+    struct peripheral *p = &peripherals[source];
+    struct cmd_item item;
+
+    if (p->staged_seq && p->staged_type == ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_INVOKE_BEHAVIOR) {
+        zmk_split_esb_prx_clear_ack(source + 1);
+        p->staged_seq = 0;
+    }
+
+    for (uint32_t i = k_msgq_num_used_get(&p->cmd_q); i > 0; i--) {
+        k_msgq_get(&p->cmd_q, &item, K_NO_WAIT);
+        if (item.data[1] != ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_INVOKE_BEHAVIOR) {
+            k_msgq_put(&p->cmd_q, &item, K_NO_WAIT);
+        }
+    }
+
+    stage_next_command(source);
 }
 
 /* pressed holds the presses ZMK was given and has not seen released, so that a
@@ -241,6 +265,9 @@ static void link_check_work_cb(struct k_work *work) {
         if (p->connected && now - p->last_heard_ms > CONFIG_ZMK_SPLIT_ESB_LINK_TIMEOUT_MS) {
             p->connected = false;
             LOG_INF("Peripheral %d lost", i);
+            k_mutex_lock(&cmd_lock, K_FOREVER);
+            drop_queued_behaviors(i);
+            k_mutex_unlock(&cmd_lock);
             release_keys(i);
             raise_link_changed(i, false);
             notify_status();
@@ -264,6 +291,11 @@ static int send_command(uint8_t source, struct zmk_split_transport_central_comma
     }
 
     struct peripheral *p = &peripherals[source];
+    if (cmd.type == ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_INVOKE_BEHAVIOR && !p->connected) {
+        LOG_DBG("Peripheral %d is away, not invoking its behavior", source);
+        return 0;
+    }
+
     struct cmd_item item = {.len = ESB_FRAME_COMMAND_HEADER + 1 + size};
     BUILD_ASSERT(ESB_FRAME_COMMAND_HEADER + 1 + ESB_FRAME_INVOKE_BEHAVIOR_SIZE <= ESB_PHY_MAX_PAYLOAD,
                  "Commands must fit one ACK payload");
