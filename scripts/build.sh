@@ -134,13 +134,19 @@ for part in "${parts[@]}"; do
         fi
     fi
 
-    # Zephyr misses edits to this module's Kconfig in an existing build dir,
-    # and -D options stick in its cache, so start fresh when either changes.
+    # Zephyr misses edits to Kconfig files outside ZMK in an existing build dir (this
+    # module's, the config's shields', other modules'), and -D options stick in its
+    # cache, so start fresh when any of them changes.
+    kconfig_dirs=("$here" "$config_dir/config")
+    for m in $modules; do
+        kconfig_dirs+=("$modules_dir/${m#/workspaces/zmk-modules/}")
+    done
     stamp="$here/build/$name/.module-kconfig"
-    kconfig_hash=$( (cat "$here/Kconfig" "$here/zephyr/module.yml"; echo "${extra[@]+${extra[*]}}") |
-        shasum | cut -d' ' -f1)
+    kconfig_hash=$( (find "${kconfig_dirs[@]}" -path '*/.git' -prune -o -path "$here/build" -prune \
+        -o -type f \( -name 'Kconfig*' -o -name module.yml \) -print | sort | xargs cat
+        echo "${extra[@]+${extra[*]}}") | shasum | cut -d' ' -f1)
     if [[ -d "$here/build/$name" && "$(cat "$stamp" 2>/dev/null)" != "$kconfig_hash" ]]; then
-        echo "   module Kconfig or build options changed, rebuilding from scratch"
+        echo "   Kconfig or build options changed, rebuilding from scratch"
         rm -rf "$here/build/$name"
     fi
 
