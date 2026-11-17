@@ -34,9 +34,16 @@ struct zmk_split_esb_stats {
     atomic_t key_lat_max_us;
     atomic_t key_lat_sum_us;
     atomic_t key_lat_count;
+    atomic_t rx_rssi[8]; /* central, per pipe: smoothed dBm of good packets, 0 until one arrives */
 };
 
 extern struct zmk_split_esb_stats zmk_split_esb_stats;
+
+/* Signal strength of a peripheral's packets at the central, in dBm; 0 until
+ * one arrives. source is the ZMK split source index (pipe - 1). */
+static inline int zmk_split_esb_peripheral_rssi(uint8_t source) {
+    return source < 7 ? (int)atomic_get(&zmk_split_esb_stats.rx_rssi[source + 1]) : 0;
+}
 
 #define ZMK_SPLIT_ESB_ASSERT_FILE_LEN 24
 

@@ -121,6 +121,12 @@ static void fill_lines(void) {
     } else {
         snprintf(lines[n++], LINE_LEN + 1, "AGE   --");
     }
+    int rssi = zmk_split_esb_peripheral_rssi(0);
+    if (rssi) {
+        snprintf(lines[n++], LINE_LEN + 1, "RSI %4d", rssi);
+    } else {
+        snprintf(lines[n++], LINE_LEN + 1, "RSI   --");
+    }
 #else
     snprintf(lines[n++], LINE_LEN + 1, "PTX");
     fmt_count(lines[n++], "TX", get(&s->tx_sent));

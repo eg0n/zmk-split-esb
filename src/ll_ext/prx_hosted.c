@@ -90,6 +90,9 @@ static struct {
     bool valid;
 } pipe_last[8];
 
+/* Each pipe's RSSI in 1/8 dB, averaged over about the last eight packets. */
+static int16_t rssi_avg8[8];
+
 static zmk_split_esb_prx_rx_cb_t rx_cb;
 
 void zmk_split_esb_prx_set_rx_cb(zmk_split_esb_prx_rx_cb_t cb) { rx_cb = cb; }
@@ -143,7 +146,10 @@ static void prx_prepare(void *param) {
 }
 
 static void rx_start_listening(void) {
-    NRF_RADIO->SHORTS = ESB_PHY_SHORTS_COMMON | NRF_RADIO_SHORT_DISABLED_TXEN_MASK;
+    /* The RSSI shortcuts sample each packet's signal strength as its address matches. */
+    NRF_RADIO->SHORTS = ESB_PHY_SHORTS_COMMON | NRF_RADIO_SHORT_DISABLED_TXEN_MASK |
+                        NRF_RADIO_SHORT_ADDRESS_RSSISTART_MASK |
+                        NRF_RADIO_SHORT_DISABLED_RSSISTOP_MASK;
     NRF_RADIO->PACKETPTR = (uint32_t)rx_buf;
     state = PRX_STATE_RX;
 }
@@ -332,6 +338,12 @@ static void on_rx_disabled(void) {
         state = PRX_STATE_TX_ACK;
         atomic_inc(&zmk_split_esb_stats.ack_payloads);
     }
+
+    /* After the ACK is under way: the sample holds until the next address match. */
+    int16_t sample8 = -8 * (int16_t)nrf_radio_rssi_sample_get(NRF_RADIO);
+    int16_t avg8 = rssi_avg8[pipe];
+    rssi_avg8[pipe] = avg8 ? avg8 + (sample8 - avg8) / 8 : sample8;
+    atomic_set(&zmk_split_esb_stats.rx_rssi[pipe], (rssi_avg8[pipe] - 4) / 8);
 
     if (!dup) {
         atomic_inc(&zmk_split_esb_stats.rx_ok);
